@@ -49,8 +49,13 @@ The spec is the durable artifact. Code is a (re)generable output.
 
 ## Layout
 
+- `skills/` — `SKILL.md` capability packs for agents:
+  - [`spec`](skills/spec/SKILL.md) — generate a persistent specification (the *what* and *why*) with no open decisions in its scope.
+  - [`second-opinion`](skills/second-opinion/SKILL.md) — prepare a self-contained brief to paste into a separate, independent model session for a peer review of a spec, plan, or implementation diff.
+  - [`prompt-builder`](skills/prompt-builder/SKILL.md) — turn a modular skeleton into a concrete, evidence-driven prompt for an unattended or interactive engineering task.
+  - [`reduce-complexity`](skills/reduce-complexity/SKILL.md) — find and remove accidental complexity that has accreted in an in-progress change (PR or any branch) without disturbing inherent complexity.
+
 Planned (populated as patterns emerge):
 
-- `skills/` — `SKILL.md` capability packs for agents.
 - `commands/` — Reusable slash commands and prompts.
 - `templates/` — Spec templates (feature, refactor, bug, ADR, etc.).
