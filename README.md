@@ -1,61 +1,51 @@
-# sdd
+# agent-skills
 
-Personal collection of agent skills, slash commands, and templates for **spec-driven development** with Cursor.
+Portable `SKILL.md` capability packs and hooks for AI coding agents — written once and shared across **Claude Code, Codex, Cursor, and GitHub Copilot**.
 
-## What is this?
+A skill is a small Markdown file with YAML frontmatter (`name` + `description`) that an agent loads on demand when a task matches its description. Because the format is shared, the same skill drops into each agent's skills directory unchanged. Hooks add agent-specific automation (e.g. session memory) on top.
 
-A home for reusable agent assets — `SKILL.md` files, slash commands, prompts, and spec templates — that help drive software work from a written specification rather than ad-hoc prompts.
+## Skills
 
-> **Spec-driven development (SDD):** write a precise specification of *what* and *why* first, then have an agent (or yourself) generate, regenerate, and verify the *how*.
-
-The spec is the durable artifact. Code is a (re)generable output.
-
-## Why spec-driven development?
-
-### Advantages
-
-- **Reproducibility.** Regenerate code from the spec instead of re-prompting from scratch. Useful when refactoring, swapping stacks, or porting between languages.
-- **Auditable intent.** Reviewers see *why* before *what*. A diff of the spec is easier to reason about than a diff of generated code.
-- **Reduced hallucination.** Explicit constraints (inputs, invariants, edge cases) leave agents less room to invent.
-- **Better onboarding.** Specs encode rationale; new contributors — human or AI — ramp up faster than they would from code alone.
-- **Forces clarity before commitment.** Many "bugs" are unwritten requirements. SDD surfaces them earlier.
-- **Composes with TDD.** Tests are a machine-checkable subset of the spec; agents can derive them.
-- **Survives context resets.** A persisted spec outlives any single chat, model, or session — agents can resume from it.
-
-### Disadvantages / trade-offs
-
-- **Upfront cost.** Writing a good spec is real work. For one-off scripts or genuine exploration it can be slower than just coding.
-- **Over-specification risk.** Rigid specs prematurely lock in design and discourage emergent solutions.
-- **Sync drift.** Edit code without updating the spec and the spec rots. Either treat the spec as canonical (regenerate) or invest in tooling to keep both aligned.
-- **Skill curve.** Specifying clearly, at the right level of abstraction, is a learnable but non-trivial skill.
-- **Lossy abstraction.** Some implementation details (perf tweaks, library quirks, platform bugs) are awkward to express in prose; the spec can't be the *only* source.
-- **Tooling immaturity.** Conventions, linters, and round-trip generators for specs are still in flux.
-- **Bad fit for spikes.** When you don't yet know what to build, writing a spec is just speculation in fancier clothes.
-
-### Compared to other approaches
-
-| Approach | How SDD differs |
+| Skill | What it does |
 | --- | --- |
-| Chat-only / "vibe coding" | Persistent, versioned source of intent; doesn't vanish when the chat ends. |
-| Traditional requirements docs | Living and lightweight; iterated alongside the code, not frozen up front. |
-| Pure TDD | Captures intent and constraints beyond what's testable; tests fall out of the spec. |
-| Issue tickets only | A ticket says "do X"; a spec says what X is, why, and when it's correct. |
+| [`spec`](skills/spec/SKILL.md) | Generate a persistent specification — the *what* and *why* of a change — with no open decisions in its scope. The spec is the durable artifact; code is a (re)generable output. |
+| [`second-opinion`](skills/second-opinion/SKILL.md) | Prepare a self-contained brief to paste into a separate, independent model session for a peer review of a spec, plan, or implementation diff. Returns severity-labelled findings. |
+| [`prompt-builder`](skills/prompt-builder/SKILL.md) | Turn a modular skeleton into a concrete, evidence-driven prompt for an unattended or interactive engineering task (pre-registration, ≥3 converging sources, adversarial review). |
+| [`reduce-complexity`](skills/reduce-complexity/SKILL.md) | Find and remove accidental complexity that has accreted in an in-progress change (a PR or any branch) without disturbing inherent or reviewer-requested complexity. |
+| [`brain-dump`](skills/brain-dump/SKILL.md) | Generate a per-workstream Done / Handover note by scanning agent sessions across Cursor, Claude Code, Codex, and Copilot CLI in a time window. |
 
-### When *not* to use SDD
+## Hooks
 
-- True prototyping where the goal is to learn what the right thing is.
-- Trivial changes where the diff *is* the spec.
-- Throwaway scripts.
+| Hook | Agent | What it does |
+| --- | --- | --- |
+| [`claude/session-scratchpad.sh`](hooks/claude/session-scratchpad.sh) | Claude Code | A `SessionStart` / `PreCompact` hook that maintains a per-project, per-session scratchpad as durable working memory that survives compaction and resume. |
 
-## Layout
+Wire-up lives alongside the script: merge [`hooks/claude/settings.snippet.json`](hooks/claude/settings.snippet.json) into `~/.claude/settings.json` (hook registration + scratchpad permissions) and [`hooks/claude/CLAUDE.snippet.md`](hooks/claude/CLAUDE.snippet.md) into your global `~/.claude/CLAUDE.md` (the durable ingest instruction).
 
-- `skills/` — `SKILL.md` capability packs for agents:
-  - [`spec`](skills/spec/SKILL.md) — generate a persistent specification (the *what* and *why*) with no open decisions in its scope.
-  - [`second-opinion`](skills/second-opinion/SKILL.md) — prepare a self-contained brief to paste into a separate, independent model session for a peer review of a spec, plan, or implementation diff.
-  - [`prompt-builder`](skills/prompt-builder/SKILL.md) — turn a modular skeleton into a concrete, evidence-driven prompt for an unattended or interactive engineering task.
-  - [`reduce-complexity`](skills/reduce-complexity/SKILL.md) — find and remove accidental complexity that has accreted in an in-progress change (PR or any branch) without disturbing inherent complexity.
+## Installing
 
-Planned (populated as patterns emerge):
+Each agent loads skills from its own directory. Copy the skill folders in:
 
-- `commands/` — Reusable slash commands and prompts.
-- `templates/` — Spec templates (feature, refactor, bug, ADR, etc.).
+| Agent | Skills directory |
+| --- | --- |
+| Claude Code | `~/.claude/skills/` |
+| Codex | `~/.codex/skills/` |
+| Cursor | `~/.cursor/skills-cursor/` |
+| Copilot CLI | `~/.copilot/skills/` |
+
+```bash
+SRC="$PWD/skills"
+for dest in ~/.claude/skills ~/.codex/skills ~/.cursor/skills-cursor ~/.copilot/skills; do
+  mkdir -p "$dest"
+  rsync -a --exclude '.DS_Store' "$SRC"/ "$dest"/
+done
+```
+
+`rsync` (without `--delete`) merges these skills in without disturbing any others already present. To stay in sync with the repo instead of copying, symlink each skill folder into the target directory.
+
+## Conventions
+
+- One skill per directory: `skills/<name>/SKILL.md`, plus any scripts the skill needs under `skills/<name>/scripts/`.
+- Frontmatter is a `name` and a `description` that states **when** to use the skill — the agent matches tasks against it, so be specific about triggers.
+- Set `disable-model-invocation: true` for skills that should only run when the user explicitly asks.
+- Keep skills agent-agnostic where possible; isolate anything agent-specific in `hooks/`.
