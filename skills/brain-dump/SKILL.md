@@ -22,14 +22,18 @@ into Notion — split into **Handover** (what's in-flight / needs picking up) an
 **Done** (what shipped). Output goes to chat only — do not write files (except the
 skill's own last-run state) and do not push to Notion.
 
-The canonical home of this skill is the git repo `~/brain-dump`; the Cursor,
-Claude Code, Codex, and Copilot skill directories are symlinks to it. Scripts
-and the last-run state are shared, so marking a run from any tool advances the
-single window for all of them.
+Run the scripts from **this skill's own directory** — the directory this
+SKILL.md was loaded from (e.g. `~/.claude/skills/brain-dump`,
+`~/.codex/skills/brain-dump`, `~/.cursor/skills-cursor/brain-dump`, or
+`~/.copilot/skills/brain-dump`). The examples below write `<skill-dir>` for that
+path; substitute the real one. The last-run state, however, is shared across
+every tool via the fixed file `~/.brain-dump/last_run`, so marking a run from any
+tool advances the single window for all of them.
 
 ## Scripts
 
-Run with the absolute paths below (canonical home `~/brain-dump/`).
+Run with the absolute path of this skill's own `scripts/` directory; the examples
+below abbreviate it as `<skill-dir>/scripts/`.
 
 - `scripts/list_sessions.py [WINDOW]` — index sessions across all projects
   and all four chat stores. A session is listed when its activity overlaps the
@@ -71,7 +75,7 @@ Run `list_sessions.py` with the user's window argument, or no argument for
 note's date heading comes from it.
 
 ```bash
-python3 ~/brain-dump/scripts/list_sessions.py 2d --exclude-current
+python3 <skill-dir>/scripts/list_sessions.py 2d --exclude-current
 ```
 
 ### 2. Identify and exclude the current session
@@ -88,7 +92,7 @@ note doesn't summarize itself.
   and re-run:
 
 ```bash
-python3 ~/brain-dump/scripts/list_sessions.py 2d --exclude-session <this-uuid>
+python3 <skill-dir>/scripts/list_sessions.py 2d --exclude-session <this-uuid>
 ```
 
 If you cannot pin it down, proceed but never emit a "brain-dump" workstream.
@@ -170,11 +174,11 @@ level belongs to the Notion page title):
 
 After the note is composed, record the invocation time so the next default
 window starts here. Do this LAST, so a failed run doesn't lose the window.
-The state is shared: marking from Cursor or Claude Code advances the same
-window.
+The state lives at `~/.brain-dump/last_run` and is shared across tools: marking
+from Cursor or Claude Code advances the same window.
 
 ```bash
-python3 ~/brain-dump/scripts/list_sessions.py --mark-run
+python3 <skill-dir>/scripts/list_sessions.py --mark-run
 ```
 
 ## Output example

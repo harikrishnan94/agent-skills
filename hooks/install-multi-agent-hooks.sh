@@ -3,11 +3,12 @@
 # Symlinks each agent's hook script from the agent-skills clone, registers it in the
 # agent's config, and appends the durable ingest instruction. Idempotent.
 #
-# Assumes the repo is cloned at ~/projects/agent-skills (see install script for skills).
+# Derives the repo location from this script's own path, so it works from any clone.
 set -euo pipefail
 
-REPO="$HOME/projects/agent-skills"
-[ -d "$REPO/hooks" ] || { echo "!! $REPO not found — clone the repo first"; exit 1; }
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(dirname "$SCRIPT_DIR")"
+[ -d "$REPO/hooks" ] || { echo "!! $REPO/hooks not found — run this script from inside the agent-skills clone"; exit 1; }
 
 # Extract just the "## Session state tracking" section from a snippet file.
 ingest() { awk '/^## Session state tracking/{p=1} p' "$1"; }

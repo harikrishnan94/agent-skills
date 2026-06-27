@@ -16,7 +16,7 @@ Window resolution (highest precedence first):
   --since / --until    explicit ISO timestamps
   positional WINDOW    a duration (30m, 8h, 2d, 1w), a date (YYYY-MM-DD),
                        or the keywords `today` / `yesterday`
-  (nothing)            since the last invocation (state/last_run), until now;
+  (nothing)            since the last invocation (~/.brain-dump/last_run), until now;
                        on the first ever run, falls back to the last 24h
 
 Use --mark-run to record "now" as the last invocation time and exit; the
@@ -29,6 +29,7 @@ import datetime as dt
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -45,8 +46,9 @@ COMMAND_ARGS_RE = re.compile(r"<command-args>([\s\S]*?)</command-args>")
 UUID_FILE_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
-SKILL_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_STATE = SKILL_DIR / "state" / "last_run"
+# Shared across every installed copy of this skill (Cursor, Claude Code, Codex,
+# Copilot), so marking a run from any tool advances one window for all of them.
+DEFAULT_STATE = Path.home() / ".brain-dump" / "last_run"
 DEFAULT_CURSOR_ROOT = Path.home() / ".cursor" / "projects"
 DEFAULT_CLAUDE_ROOT = Path.home() / ".claude" / "projects"
 DEFAULT_CODEX_ROOT = Path.home() / ".codex" / "sessions"
@@ -457,10 +459,30 @@ def find_sessions(cursor_root, claude_root, codex_root, copilot_root,
     return results
 
 
+def parent_pid(pid):
+    """Return the parent pid of `pid`, cross-platform. Tries Linux /proc first,
+    then falls back to `ps` (macOS / BSD, which have no /proc). Returns None when
+    it can't be determined."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        # ppid is the 2nd field after the parenthesised comm, which may itself
+        # contain spaces or ')'
+        return int(stat.rsplit(")", 1)[1].split()[1])
+    except (OSError, IndexError, ValueError):
+        pass
+    try:
+        out = subprocess.run(
+            ["ps", "-o", "ppid=", "-p", str(pid)],
+            capture_output=True, text=True)
+        return int(out.stdout.strip())
+    except (OSError, ValueError):
+        return None
+
+
 def detect_current_claude_session():
     """Return the sessionId of the live Claude Code session this process runs
-    under, by matching pids from ~/.claude/sessions/*.json against the /proc
-    parent chain. Returns None when not running under Claude Code."""
+    under, by matching pids from ~/.claude/sessions/*.json against the parent
+    process chain. Returns None when not running under Claude Code."""
     pid_map = {}
     if CLAUDE_SESSIONS_DIR.is_dir():
         for f in CLAUDE_SESSIONS_DIR.glob("*.json"):
@@ -471,17 +493,11 @@ def detect_current_claude_session():
                 continue
     pid = os.getpid()
     seen = set()
-    while pid > 1 and pid not in seen:
+    while pid and pid > 1 and pid not in seen:
         seen.add(pid)
         if pid in pid_map:
             return pid_map[pid]
-        try:
-            stat = Path(f"/proc/{pid}/stat").read_text()
-            # ppid is the 2nd field after the parenthesised comm, which may
-            # itself contain spaces or ')'
-            pid = int(stat.rsplit(")", 1)[1].split()[1])
-        except (OSError, IndexError, ValueError):
-            return None
+        pid = parent_pid(pid)
     return None
 
 

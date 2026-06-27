@@ -1,10 +1,10 @@
 {
-  "//": "Merge into ~/.cursor/hooks.json to enable hooks/cursor/session-scratchpad.sh. Cursor loads user-level hooks from ~/.cursor/hooks.json; `command` should be an absolute path to the installed hook (symlinked into ~/.cursor/hooks/). CAVEAT: the Cursor CLI (cursor-agent) currently fires only before/afterShellExecution — sessionStart fires in the Cursor IDE, so this hook is effectively IDE-only until the CLI gains sessionStart support.",
+  "//": "Merge into ~/.cursor/hooks.json to enable hooks/cursor/session-scratchpad.sh. Cursor loads user-level hooks from ~/.cursor/hooks.json and runs `command` directly (no shell), so a leading `~` is NOT expanded — `command` must be a real absolute path to the installed hook (symlinked into ~/.cursor/hooks/). Replace the placeholder below with your home dir, e.g. /Users/you/.cursor/hooks/session-scratchpad.sh; hooks/install-multi-agent-hooks.sh writes it for you. CAVEAT: the Cursor CLI (cursor-agent) currently fires only before/afterShellExecution — sessionStart fires in the Cursor IDE, so this hook is effectively IDE-only until the CLI gains sessionStart support.",
   "version": 1,
   "hooks": {
     "sessionStart": [
       {
-        "command": "~/.cursor/hooks/session-scratchpad.sh"
+        "command": "/ABSOLUTE/PATH/TO/.cursor/hooks/session-scratchpad.sh"
       }
     ]
   }
