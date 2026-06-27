@@ -16,11 +16,18 @@ A skill is a small Markdown file with YAML frontmatter (`name` + `description`) 
 
 ## Hooks
 
-| Hook | Agent | What it does |
-| --- | --- | --- |
-| [`claude/session-scratchpad.sh`](hooks/claude/session-scratchpad.sh) | Claude Code | A `SessionStart` / `PreCompact` hook that maintains a per-project, per-session scratchpad as durable working memory that survives compaction and resume. |
+The **session-scratchpad** hook maintains a per-project, per-session scratchpad as durable working memory that survives compaction and resume. It is ported to each agent's hook contract — each agent passes a different session-start payload and expects a different context-injection shape:
 
-Wire-up lives alongside the script: merge [`hooks/claude/settings.snippet.json`](hooks/claude/settings.snippet.json) into `~/.claude/settings.json` (hook registration + scratchpad permissions) and [`hooks/claude/CLAUDE.snippet.md`](hooks/claude/CLAUDE.snippet.md) into your global `~/.claude/CLAUDE.md` (the durable ingest instruction).
+| Hook | Agent | Event | Injects via | Wire-up |
+| --- | --- | --- | --- | --- |
+| [`claude/session-scratchpad.sh`](hooks/claude/session-scratchpad.sh) | Claude Code | `SessionStart` / `PreCompact` | `hookSpecificOutput.additionalContext` | [`settings.snippet.json`](hooks/claude/settings.snippet.json) → `~/.claude/settings.json`; [`CLAUDE.snippet.md`](hooks/claude/CLAUDE.snippet.md) → `~/.claude/CLAUDE.md` |
+| [`codex/session-scratchpad.sh`](hooks/codex/session-scratchpad.sh) | Codex | `SessionStart` | `hookSpecificOutput.additionalContext` | [`config.snippet.toml`](hooks/codex/config.snippet.toml) → `~/.codex/config.toml`; [`AGENTS.snippet.md`](hooks/codex/AGENTS.snippet.md) → `~/.codex/AGENTS.md` |
+| [`copilot/session-scratchpad.sh`](hooks/copilot/session-scratchpad.sh) | Copilot CLI | `sessionStart` | top-level `additionalContext` | [`hooks.snippet.json`](hooks/copilot/hooks.snippet.json) → `~/.copilot/hooks/`; [`copilot-instructions.snippet.md`](hooks/copilot/copilot-instructions.snippet.md) → `~/.copilot/copilot-instructions.md` |
+| [`cursor/session-scratchpad.sh`](hooks/cursor/session-scratchpad.sh) | Cursor | `sessionStart` | top-level `additional_context` (snake_case); reads `workspace_roots`, not `cwd` | [`hooks.snippet.json`](hooks/cursor/hooks.snippet.json) → `~/.cursor/hooks.json` |
+
+> **Cursor caveat:** the Cursor CLI (`cursor-agent`) currently fires only `beforeShellExecution`/`afterShellExecution`; `sessionStart` fires in the Cursor **IDE**. The Cursor hook is therefore effectively IDE-only until the CLI gains `sessionStart`.
+
+Each agent uses its own scratchpad store (`~/.<agent>-session-scratchpads/`). To install the Codex/Copilot/Cursor hooks on a host that has the repo cloned, run [`hooks/install-multi-agent-hooks.sh`](hooks/install-multi-agent-hooks.sh) (symlinks each script, registers it, appends the ingest instruction — idempotent).
 
 ## Installing
 
