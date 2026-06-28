@@ -1,6 +1,7 @@
 ---
 name: spec
 description: Use when the user explicitly asks for a specification, spec, or contract. Produces a persistent specification with no open decisions in its scope: what, why, observable behavior, constraints, and acceptance criteria. Never produces task breakdowns, estimates, or how-to guidance.
+disable-model-invocation: true
 ---
 
 # Spec generator
