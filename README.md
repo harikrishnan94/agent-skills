@@ -11,7 +11,7 @@ A skill is a small Markdown file with YAML frontmatter (`name` + `description`) 
 | [`spec`](skills/spec/SKILL.md) | Generate a persistent specification — the *what* and *why* of a change — with no open decisions in its scope. The spec is the durable artifact; code is a (re)generable output. |
 | [`second-opinion`](skills/second-opinion/SKILL.md) | Prepare a self-contained brief to paste into a separate, independent model session for a peer review of a spec, plan, or implementation diff. Returns severity-labelled findings. |
 | [`prompt-builder`](skills/prompt-builder/SKILL.md) | Turn a modular skeleton into a concrete, evidence-driven prompt for an unattended or interactive engineering task (pre-registration, ≥3 converging sources, adversarial review). |
-| [`reduce-complexity`](skills/reduce-complexity/SKILL.md) | Find and remove accidental complexity that has accreted in an in-progress change (a PR or any branch) without disturbing inherent or reviewer-requested complexity. |
+| [`reduce-complexity`](skills/reduce-complexity/SKILL.md) | Report-only structural review of an in-progress change (a PR or feature branch): finds accidental complexity accreted while the change was built and reports evidence-backed simplifications. Never applies edits. |
 | [`brain-dump`](skills/brain-dump/SKILL.md) | Generate a per-workstream Done / Handover note by scanning agent sessions across Cursor, Claude Code, Codex, and Copilot CLI in a time window. |
 | [`humanize`](skills/humanize/SKILL.md) | Hold generated code to the bar a careful human author meets before a reviewer sees it: remove narration comments, defensive theater, padding, and generated-looking collateral; add the edge-case handling generated code tends to miss. Fixes an existing diff by default. |
 
