@@ -1,0 +1,24 @@
+{
+  "//": "agent-memory hooks for Cursor (IDE + cursor-agent CLI). hooks/agent-memory/install.sh merges this into ~/.cursor/hooks.json after replacing __CURSOR_WRAPPERS__ with the absolute wrapper dir (~/.cursor/hooks/agent-memory). Commands are zero-argument executable wrappers because the IDE is not guaranteed to shell-process the command string. Cursor caveats: sessionStart does NOT re-fire on resume or after compaction (postToolUse re-injection covers both); beforeSubmitPrompt and stop do not fire in `cursor-agent -p` print mode; preCompact is observational only. sessionStart passes workspace_roots, not cwd.",
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "command": "__CURSOR_WRAPPERS__/session-start.sh" }
+    ],
+    "beforeSubmitPrompt": [
+      { "command": "__CURSOR_WRAPPERS__/prompt.sh" }
+    ],
+    "postToolUse": [
+      { "command": "__CURSOR_WRAPPERS__/post-tool.sh" }
+    ],
+    "stop": [
+      { "command": "__CURSOR_WRAPPERS__/stop.sh" }
+    ],
+    "preCompact": [
+      { "command": "__CURSOR_WRAPPERS__/pre-compact.sh" }
+    ],
+    "sessionEnd": [
+      { "command": "__CURSOR_WRAPPERS__/session-end.sh" }
+    ]
+  }
+}

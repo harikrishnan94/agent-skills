@@ -16,18 +16,25 @@ A skill is a small Markdown file with YAML frontmatter (`name` + `description`) 
 
 ## Hooks
 
-The **session-scratchpad** hook maintains a per-project, per-session scratchpad as durable working memory that survives compaction and resume. It is ported to each agent's hook contract — each agent passes a different session-start payload and expects a different context-injection shape:
+The **agent-memory** system ([`hooks/agent-memory/`](hooks/agent-memory/), design in [`docs/session-memory.md`](docs/session-memory.md)) gives all four agents a shared, durable working memory in one store (`~/.agent-memory`): a bounded, agent-neutral working-state checkpoint per session, a mechanical event journal maintained by hooks, cross-session and cross-agent resume (`adopt`), staleness enforcement at turn end, history search, and a `doctor` that validates each host's installation. It supersedes the earlier per-agent `session-scratchpad` hooks — the installer removes those automatically.
 
-| Hook | Agent | Event | Injects via | Wire-up |
-| --- | --- | --- | --- | --- |
-| [`claude/session-scratchpad.sh`](hooks/claude/session-scratchpad.sh) | Claude Code | `SessionStart` / `PreCompact` | `hookSpecificOutput.additionalContext` | [`settings.snippet.json`](hooks/claude/settings.snippet.json) → `~/.claude/settings.json`; [`CLAUDE.snippet.md`](hooks/claude/CLAUDE.snippet.md) → `~/.claude/CLAUDE.md` |
-| [`codex/session-scratchpad.sh`](hooks/codex/session-scratchpad.sh) | Codex | `SessionStart` | `hookSpecificOutput.additionalContext` | [`config.snippet.toml`](hooks/codex/config.snippet.toml) → `~/.codex/config.toml`; [`AGENTS.snippet.md`](hooks/codex/AGENTS.snippet.md) → `~/.codex/AGENTS.md` |
-| [`copilot/session-scratchpad.sh`](hooks/copilot/session-scratchpad.sh) | Copilot CLI | `sessionStart` | top-level `additionalContext` | [`hooks.snippet.json`](hooks/copilot/hooks.snippet.json) → `~/.copilot/hooks/`; [`copilot-instructions.snippet.md`](hooks/copilot/copilot-instructions.snippet.md) → `~/.copilot/copilot-instructions.md` |
-| [`cursor/session-scratchpad.sh`](hooks/cursor/session-scratchpad.sh) | Cursor | `sessionStart` | top-level `additional_context` (snake_case); reads `workspace_roots`, not `cwd` | [`hooks.snippet.json`](hooks/cursor/hooks.snippet.json) → `~/.cursor/hooks.json` |
+One Python core ([`agent_memory.py`](hooks/agent-memory/agent_memory.py)) handles all four agents; per-agent adapters are just symlinks plus each platform's native hook registration (from [`snippets/`](hooks/agent-memory/snippets/)):
 
-> **Cursor caveat:** the Cursor CLI (`cursor-agent`) currently fires only `beforeShellExecution`/`afterShellExecution`; `sessionStart` fires in the Cursor **IDE**. The Cursor hook is therefore effectively IDE-only until the CLI gains `sessionStart`.
+| Agent | Events used | Post-compaction recovery | Notes |
+| --- | --- | --- | --- |
+| Claude Code | SessionStart, UserPromptSubmit, PostToolUse, Stop, PreCompact, SessionEnd | SessionStart re-fires with `source=compact` | strongest platform |
+| Codex | SessionStart, UserPromptSubmit, PostToolUse, Stop, Pre/PostCompact | next user prompt re-injects | trust hooks once in the TUI or `codex exec` silently skips them |
+| Cursor | sessionStart, beforeSubmitPrompt, postToolUse, stop, preCompact, sessionEnd | next tool call re-injects (also covers resume) | prompt/stop hooks don't fire in `-p` print mode |
+| Copilot CLI | sessionStart, userPromptSubmitted, postToolUse, agentStop, preCompact, sessionEnd | next tool call re-injects | 10 KB injection cap; hook files load at CLI startup |
 
-Each agent uses its own scratchpad store (`~/.<agent>-session-scratchpads/`). To install the Codex/Copilot/Cursor hooks on a host that has the repo cloned, run [`hooks/install-multi-agent-hooks.sh`](hooks/install-multi-agent-hooks.sh) (symlinks each script, registers it, appends the ingest instruction — idempotent).
+Install/upgrade on a host that has the repo cloned (idempotent):
+
+```bash
+hooks/install-multi-agent-hooks.sh
+python3 hooks/agent-memory/agent_memory.py doctor   # validate
+```
+
+Tests: `tests/run.sh`.
 
 ## Installing
 

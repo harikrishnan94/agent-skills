@@ -1,0 +1,48 @@
+{
+  "//": "agent-memory hooks for Copilot CLI. hooks/agent-memory/install.sh writes this as ~/.copilot/hooks/agent-memory.json. Copilot loads user hook files from ~/.copilot/hooks/*.json at CLI startup only (restart the CLI after changes). sessionStart fires on resume too (source: resume); preCompact cannot inject and there is no postCompact, so postToolUse performs post-compaction re-injection. Merged additionalContext is capped at 10 KB per event. Also merge snippets/instructions.snippet.md into ~/.copilot/copilot-instructions.md (the durable ingest half — the only channel that survives compaction).",
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "python3 \"$HOME/.copilot/hooks/agent-memory.py\" hook copilot session-start",
+        "timeoutSec": 30
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "python3 \"$HOME/.copilot/hooks/agent-memory.py\" hook copilot prompt",
+        "timeoutSec": 15
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "python3 \"$HOME/.copilot/hooks/agent-memory.py\" hook copilot post-tool",
+        "timeoutSec": 15
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "python3 \"$HOME/.copilot/hooks/agent-memory.py\" hook copilot stop",
+        "timeoutSec": 15
+      }
+    ],
+    "preCompact": [
+      {
+        "type": "command",
+        "bash": "python3 \"$HOME/.copilot/hooks/agent-memory.py\" hook copilot pre-compact",
+        "timeoutSec": 15
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "python3 \"$HOME/.copilot/hooks/agent-memory.py\" hook copilot session-end",
+        "timeoutSec": 15
+      }
+    ]
+  }
+}

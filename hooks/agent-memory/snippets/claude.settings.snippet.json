@@ -1,0 +1,75 @@
+{
+  "//": "agent-memory hooks for Claude Code. hooks/agent-memory/install.sh merges this into ~/.claude/settings.json (or merge it manually). Requires the adapter symlink ~/.claude/hooks/agent-memory.py -> <repo>/hooks/agent-memory/agent_memory.py. The permissions.allow rules let Claude read/update its working-state file without prompting. SessionStart covers startup, resume, /clear and post-compaction re-injection; UserPromptSubmit/PostToolUse journal activity; Stop enforces checkpoint freshness; PreCompact/SessionEnd record lifecycle. Also merge snippets/instructions.snippet.md into ~/.claude/CLAUDE.md (the durable ingest half).",
+  "permissions": {
+    "allow": [
+      "Read(~/.agent-memory/**)",
+      "Edit(~/.agent-memory/**)",
+      "Write(~/.agent-memory/**)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/agent-memory.py\" hook claude session-start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/agent-memory.py\" hook claude prompt"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/agent-memory.py\" hook claude post-tool"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/agent-memory.py\" hook claude stop"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/agent-memory.py\" hook claude pre-compact"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/agent-memory.py\" hook claude session-end",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

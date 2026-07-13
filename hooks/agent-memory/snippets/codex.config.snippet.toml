@@ -1,0 +1,60 @@
+# agent-memory hooks for Codex. The installer (hooks/agent-memory/installer.py)
+# appends the [[hooks.*]] groups below (comments stripped, replaced by tagged
+# "# [agent-memory]" lines) and manages them group-by-group on upgrade — any
+# [[hooks.*]] group whose command references agent-memory.py or
+# session-scratchpad is replaced; everything else in config.toml (your hooks,
+# [mcp_servers.*], [hooks.state] trust entries) is preserved byte-for-byte.
+#
+# Codex notes:
+# - SessionStart re-fires on resume (source=resume); manual /compact does NOT
+#   re-fire it, so UserPromptSubmit performs post-compaction re-injection.
+# - PreCompact/PostCompact cannot inject context (systemMessage is UI-only);
+#   they are journaled and arm the re-injection.
+# - Codex has no SessionEnd event; end-of-session is inferred from Stop +
+#   heartbeat age.
+# - TRUST GATE: Codex silently skips new/changed hooks in headless runs until
+#   they are trusted once in the interactive TUI ("Hooks need review").
+#   After installing or upgrading, open `codex` interactively and trust the
+#   hooks, or they will not run under `codex exec`.
+# - UserPromptSubmit and Stop ignore matchers; matcher on PostToolUse keeps
+#   journaling focused on state-changing tools.
+
+[[hooks.SessionStart]]
+matcher = "startup|resume|clear|compact"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "python3 \"$HOME/.codex/hooks/agent-memory.py\" hook codex session-start"
+statusMessage = "Loading agent memory"
+
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "python3 \"$HOME/.codex/hooks/agent-memory.py\" hook codex prompt"
+
+[[hooks.PostToolUse]]
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "python3 \"$HOME/.codex/hooks/agent-memory.py\" hook codex post-tool"
+
+[[hooks.Stop]]
+
+[[hooks.Stop.hooks]]
+type = "command"
+command = "python3 \"$HOME/.codex/hooks/agent-memory.py\" hook codex stop"
+
+[[hooks.PreCompact]]
+
+[[hooks.PreCompact.hooks]]
+type = "command"
+command = "python3 \"$HOME/.codex/hooks/agent-memory.py\" hook codex pre-compact"
+
+[[hooks.PostCompact]]
+
+[[hooks.PostCompact.hooks]]
+type = "command"
+command = "python3 \"$HOME/.codex/hooks/agent-memory.py\" hook codex post-compact"
+
+# end agent-memory hooks (added by agent-skills)
