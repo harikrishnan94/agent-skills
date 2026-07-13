@@ -63,3 +63,9 @@ env/
 *.tmp
 *.bak
 .cache/
+
+# Skill eval workspaces (run artifacts)
+*-workspace/
+
+# Skill eval suites (local only)
+evals/
