@@ -417,8 +417,15 @@ def install_copilot(home, repo):
     symlink(core_script(repo), hooks_link)
 
     path = os.path.join(home, ".copilot", "hooks", "agent-memory.json")
-    write(path, snippet(repo, "copilot.hooks.snippet.json"))
+    new = snippet(repo, "copilot.hooks.snippet.json")
+    changed = read(path) != new
+    write(path, new)
     log("copilot", "linked adapter + wrote %s" % path)
+    if changed:
+        # The adapter script updates in place (per-event execution), but the
+        # event wiring is read once at CLI startup.
+        log("copilot", "hook wiring changed — restart any running copilot"
+                       " sessions to pick it up")
 
     for legacy in ("session-scratchpad.json",):
         p = os.path.join(home, ".copilot", "hooks", legacy)

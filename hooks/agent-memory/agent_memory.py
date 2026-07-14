@@ -81,11 +81,21 @@ def store_root():
 ACTIVE_MIN = _env_int("AGENT_MEMORY_ACTIVE_MIN", 15)     # heartbeat freshness
 GAP_MIN = _env_int("AGENT_MEMORY_GAP_MIN", 45)           # resume-gap detector
 STALE_TOOLS = _env_int("AGENT_MEMORY_STALE_TOOLS", 3)    # actions before stale
+NUDGE_TOOLS = _env_int("AGENT_MEMORY_NUDGE_TOOLS", 5)    # actions before mid-turn
+                                                         # nudge; 0 disables
+NUDGE_COOLDOWN_MIN = _env_int("AGENT_MEMORY_NUDGE_COOLDOWN_MIN", 5)
 MAX_INJECT = _env_int("AGENT_MEMORY_MAX_INJECT", 8000)   # bytes; Copilot caps 10KB
+# Codex spills hook output past ~2,500 tokens into a file the model may not
+# read; keep its injections well under that (~6KB of dense text).
+INJECT_BUDGETS = {"codex": 6000}
 MAX_STATE_LINES = 120                                    # guidance, warned above
 CANDIDATES = 3                                           # offered at session start
 JOURNAL_ROTATE = 2 * 1024 * 1024                         # bytes
 LOG_ROTATE = 512 * 1024
+
+
+def inject_budget(agent):
+    return min(MAX_INJECT, INJECT_BUDGETS.get(agent, MAX_INJECT))
 
 STATE_TEMPLATE = """# Working state
 Status: in-progress
@@ -231,10 +241,16 @@ def log_error(msg):
 
 
 def truncate(text, limit, marker="\n...[truncated — read the file itself]"):
+    """Cap text at `limit` BYTES. The marker's em-dash made the old
+    char-count arithmetic overshoot by 2 bytes — enough to breach a
+    platform's hard cap exactly at the boundary."""
     if len(text.encode("utf-8", "replace")) <= limit:
         return text
-    enc = text.encode("utf-8", "replace")[: max(0, limit - len(marker))]
-    return enc.decode("utf-8", "replace") + marker
+    room = max(0, limit - len(marker.encode("utf-8")))
+    enc = text.encode("utf-8", "replace")[:room]
+    # "ignore" drops a trailing partial character instead of inflating it
+    # into a 3-byte U+FFFD, keeping the result under the byte budget.
+    return enc.decode("utf-8", "ignore") + marker
 
 
 def sanitize_name(name):
@@ -492,6 +508,9 @@ def adapt_claude(event, p):
         "stop_hook_active": bool(p.get("stop_hook_active")),
         "trigger": p.get("trigger"),
         "reason": p.get("reason"),
+        # Task-subagent tool calls fire hooks under the parent session id;
+        # only those payloads carry agent_id/agent_type (verified 2026-07).
+        "subagent": bool(p.get("agent_id") or p.get("agent_type")),
     }
 
 
@@ -514,6 +533,7 @@ def adapt_cursor(event, p):
         "stop_hook_active": False,
         "trigger": p.get("trigger"),
         "reason": p.get("reason") or p.get("status"),
+        "subagent": False,  # no known subagent signal in cursor payloads
     }
 
 
@@ -530,6 +550,9 @@ def adapt_copilot(event, p):
         "stop_hook_active": False,
         "trigger": p.get("trigger"),
         "reason": p.get("reason") or p.get("stopReason"),
+        # copilot-cli #3894: hooks do fire on subagent turns, but the payload
+        # carries no discriminator — accept nudges reaching subagents there.
+        "subagent": bool(p.get("agentId") or p.get("agentType")),
     }
 
 
@@ -628,13 +651,24 @@ def journal_text(sdir):
     return (read_text(journal_path(sdir) + ".1") + read_text(journal_path(sdir)))
 
 
-def significant_events_since(sdir, since_ts):
-    """Count journaled state-changing tool calls newer than since_ts.
+def journal_tool_events(sdir):
+    """Yield (ts, tool, target) for journaled tool events, oldest first.
 
-    Only 'tool' events count: prompts are conversation, not work — a
-    tool-free Q&A session must never be declared stale.
+    Only 'tool' events: prompts are conversation, not work — a tool-free Q&A
+    session must never be declared stale. A double-registered hook (e.g.
+    codex honoring both config.toml and hooks.json) fires twice per tool and
+    would double every staleness count and state a wrong n in enforcement
+    messages, so identical back-to-back (tool, target) records within 0.5s
+    collapse to one. Collapsing must never eat REAL work (that would silently
+    disarm the stop block), so it is deliberately narrow: duplicate hook
+    processes for one event land near-simultaneously, while genuine
+    consecutive tool completions are separated by inference time — and
+    records without a target never collapse (distinct NotebookEdit/MCP calls
+    share (tool, None) and would alias; a double-fired target-less tool
+    counting twice is the safer error, and doctor warns about the duplicate
+    registration itself).
     """
-    count = 0
+    last = None
     for line in journal_text(sdir).splitlines():
         try:
             rec = json.loads(line)
@@ -643,9 +677,27 @@ def significant_events_since(sdir, since_ts):
         if rec.get("ev") != "tool":
             continue
         ts = parse_iso(rec.get("ts", ""))
-        if ts is not None and (since_ts is None or ts > since_ts):
-            count += 1
-    return count
+        if ts is None:
+            continue
+        sig = (rec.get("tool"), rec.get("target"))
+        if (last is not None and sig == last[0] and sig[1] is not None
+                and ts - last[1] < 0.5):
+            continue
+        last = (sig, ts)
+        yield ts, rec.get("tool") or "?", rec.get("target")
+
+
+def significant_events_since(sdir, since_ts):
+    """Count journaled state-changing tool calls newer than since_ts."""
+    return sum(1 for ts, _t, _a in journal_tool_events(sdir)
+               if since_ts is None or ts > since_ts)
+
+
+def journal_tool_tail(sdir, since_ts, limit=10):
+    """-> (last `limit` tool events newer than since_ts, total such events)."""
+    events = [e for e in journal_tool_events(sdir)
+              if since_ts is None or e[0] > since_ts]
+    return events[-limit:], len(events)
 
 
 def checkpoint_is_stale(sdir, meta):
@@ -655,6 +707,81 @@ def checkpoint_is_stale(sdir, meta):
     if state_is_template(sdir, meta):
         return n >= 1, n  # never checkpointed at all
     return n >= STALE_TOOLS, n
+
+
+def nudge_text(sdir, meta, n, count):
+    """Mid-turn staleness reminder. Factual tone on purpose: imperative
+    system-command phrasing can trip Claude's prompt-injection defenses."""
+    sp = state_path(sdir)
+    if count <= 1:
+        return (
+            "[agent-memory] %d file-modifying tool calls have run since %s"
+            " was last updated. Per your working-memory instructions, update"
+            " it now — read it if needed, then one Write rewriting the Now /"
+            " Next / Done sections in place to match reality — then continue"
+            " the current task. No need to mention this in your response."
+            % (n, sp))
+    # Escalated wording must only promise what the stop hook will deliver:
+    # not in soft mode, not inside the 30-min block rate limit, and not while
+    # already running a forced continuation (its stop arrives with
+    # stop_hook_active set and is never blocked again).
+    enforce = os.environ.get("AGENT_MEMORY_ENFORCE", "block") != "soft"
+    last_block = parse_iso(meta.get("last_stop_block", ""))
+    will_block = (enforce and not meta.get("stop_block_pending")
+                  and (last_block is None
+                       or now_ts() - last_block >= 30 * 60))
+    if will_block:
+        consequence = ("the checkpoint gets forced at end of turn anyway, at"
+                       " the price of an extra round — doing it now while"
+                       " context is fresh is cheaper")
+    else:
+        consequence = ("if this session is interrupted, none of this work is"
+                       " recoverable")
+    return (
+        "[agent-memory] %s is still stale — %d uncheckpointed tool calls, and"
+        " an earlier reminder was not acted on; %s. One small checkpoint"
+        " write, then continue the task." % (sp, n, consequence))
+
+
+def maybe_nudge(sdir, meta, agent, event):
+    """Advisory mid-turn stage of staleness enforcement (stop is the blocking
+    stage). Fires at most twice per staleness episode, never within the
+    cooldown of any other state-carrying delivery. Session-start stamps
+    last_inject, so the first cooldown window after every start/compact is a
+    deliberate nudge blackout — the state file was just delivered."""
+    if NUDGE_TOOLS <= 0:
+        return None
+    # Hand-edited/corrupt meta must degrade, not raise: an exception here
+    # aborts the whole event before save_meta (take_pending_reinject guards
+    # the same corruption class).
+    last = meta.get("last_nudge")
+    last = last if isinstance(last, dict) else {}
+    last_inject = meta.get("last_inject")
+    last_inject = last_inject if isinstance(last_inject, dict) else {}
+    recent = [parse_iso(last.get("ts", "")),
+              parse_iso(last_inject.get("ts", "")),
+              parse_iso(meta.get("last_stop_block", ""))]
+    recent = [t for t in recent if t is not None]
+    if recent and now_ts() - max(recent) < NUDGE_COOLDOWN_MIN * 60:
+        return None
+    last_ts = parse_iso(last.get("ts", ""))
+    mt = state_mtime(sdir)
+    # A state write after the previous nudge closes the episode; a missing
+    # state file counts as ignored (never TypeError on mt=None).
+    ignored = last_ts is not None and (mt is None or mt < last_ts)
+    if ignored and last.get("count", 0) >= 2:
+        return None  # two ignored reminders per episode; stop is level 3
+    stale, n = checkpoint_is_stale(sdir, meta)
+    threshold = (min(2, NUDGE_TOOLS) if state_is_template(sdir, meta)
+                 else NUDGE_TOOLS)
+    if not stale or n < threshold:
+        return None
+    count = last.get("count", 0) + 1 if ignored else 1
+    journal(sdir, "nudge", uncheckpointed=n, count=count)
+    meta["last_nudge"] = {"ts": iso(), "uncheckpointed": n, "count": count}
+    return render_inject(agent, event,
+                         truncate(nudge_text(sdir, meta, n, count),
+                                  inject_budget(agent)))
 
 
 # --- session status / candidates ----------------------------------------------
@@ -783,6 +910,7 @@ def compose_session_start(proj, ident, sdir, meta, created, source):
     head.append("Your working-state file: %s" % state_path(sdir))
     warnings = concurrency_warnings(proj, meta)
 
+    budget = inject_budget(meta.get("agent"))
     if not created and not state_is_template(sdir, meta):
         # resume / compact / clear of a session that already has real state
         stale, n = checkpoint_is_stale(sdir, meta)
@@ -795,8 +923,12 @@ def compose_session_start(proj, ident, sdir, meta, created, source):
         parts = head + [rules_text()] + warnings
         parts.append("--- your current working state (%s) ---" %
                      ("restored after %s" % source if source else "restored"))
-        parts.append(truncate(body, MAX_INJECT - 1500))
-        return "\n".join(parts)
+        parts.append(truncate(with_breadcrumbs(sdir, meta, body),
+                              budget - 1500))
+        # The 1500-byte reserve covers head + rules, but concurrency CAUTION
+        # lines grow with the number of active sibling sessions — cap the
+        # whole message so a busy project can't push codex past its spill.
+        return truncate("\n".join(parts), budget)
 
     # fresh session: offer unfinished work from any agent/worktree
     cands = resumable_candidates(proj, meta["key"])[:CANDIDATES]
@@ -832,22 +964,60 @@ def compose_session_start(proj, ident, sdir, meta, created, source):
             parts.append("--- most recent candidate (%s), read-only preview ---"
                          % top["meta"].get("key"))
             parts.append(preview)
+            # The candidates offer is the one delivery every agent receives
+            # on a working channel (Cursor's post-tool inject is dropped
+            # upstream), so a crashed session's uncheckpointed tail must
+            # surface here or nowhere.
+            crumbs = breadcrumb_digest(top["sdir"], top["meta"])
+            if crumbs:
+                parts.append(crumbs)
     else:
         parts.append("No unfinished work is recorded for this project. Your"
                      " state file starts from the template — fill in Objective"
                      " once the task is clear.")
-    return "\n".join(parts)
+    # This branch had no overall cap: candidates + preview + breadcrumbs can
+    # overrun the per-agent budget even though each piece is bounded.
+    return truncate("\n".join(parts), budget)
+
+
+def breadcrumb_digest(sdir, meta):
+    """Journal tail rendered for injection alongside a STALE state file: the
+    only freshness a crashed or checkpoint-less session leaves behind. Raw
+    evidence, no model cooperation needed. Empty string when fresh."""
+    stale, _n = checkpoint_is_stale(sdir, meta)
+    if not stale:
+        return ""
+    tail, total = journal_tool_tail(sdir, state_mtime(sdir))
+    if not tail:
+        return ""
+    lines = ["Uncheckpointed activity since the state file above was last"
+             " saved (auto-generated from the tool journal — raw evidence,"
+             " not decisions):"]
+    for _ts, tool, target in tail:
+        lines.append("  - %s %s" % (tool, (target or "")[:120]))
+    lines.append("  (%d tool call(s) total; the state file predates all of"
+                 " them.) Fold anything still relevant into the state file."
+                 % total)
+    return "\n".join(lines)
+
+
+def with_breadcrumbs(sdir, meta, body):
+    """body + breadcrumb tail as one string, so a downstream truncate trims
+    the breadcrumbs before it ever touches the state body."""
+    crumbs = breadcrumb_digest(sdir, meta)
+    return body + ("\n\n" + crumbs if crumbs else "")
 
 
 def compose_reinject(sdir, meta, reason):
     body = read_text(state_path(sdir))
+    budget = inject_budget(meta.get("agent"))
     return "\n".join([
         "AGENT WORKING MEMORY — context recovery (%s)." % reason,
         "Your working-state file: %s" % state_path(sdir),
         "Re-read it (and the rules injected at session start) before"
         " continuing. It is the source of truth for task state.",
         "--- current working state ---",
-        truncate(body, MAX_INJECT - 500),
+        truncate(with_breadcrumbs(sdir, meta, body), budget - 500),
     ])
 
 
@@ -934,6 +1104,8 @@ def _handle_locked(agent, event, norm, proj, ident, key):
         p = (norm.get("prompt") or "")[:400]
         journal(sdir, "prompt", text=p)
         meta["counts"]["prompts"] = meta.get("counts", {}).get("prompts", 0) + 1
+        # A new user turn means the next stop can block again.
+        meta.pop("stop_block_pending", None)
         # Only consume the armed re-injection where this event can actually
         # inject (Cursor's beforeSubmitPrompt and Copilot's userPromptSubmitted
         # cannot — the flag must survive them for the next post-tool).
@@ -953,17 +1125,25 @@ def _handle_locked(agent, event, norm, proj, ident, key):
         # Separator-anchored so ~/.agent-memory-backup/... is NOT excluded.
         store = store_root().rstrip(os.sep) + os.sep
         touches_store = bool(target) and store in target
-        if MUTATING_TOOLS.search(name) and not touches_store:
+        journaled = bool(MUTATING_TOOLS.search(name)) and not touches_store
+        if journaled:
             journal(sdir, "tool", tool=name,
                     target=target[:160] if target else None)
             meta["counts"]["tools"] = meta.get("counts", {}).get("tools", 0) + 1
-        if (agent, event) in CAN_INJECT:
+        # Subagent-fired hooks (Claude runs Task-subagent tools under the
+        # parent session id) journal their work, but never receive an
+        # injection: text delivered here lands in the SUBAGENT's context —
+        # a consumed reinject never reaches the parent, and a nudge would
+        # tell the subagent to overwrite the parent's checkpoint.
+        if (agent, event) in CAN_INJECT and not norm.get("subagent"):
             reason = take_pending_reinject(meta)
             if reason:
                 journal(sdir, "inject", kind="post-tool", reason=reason)
                 meta["last_inject"] = {"ts": iso(), "kind": "post-tool"}
                 out = render_inject(agent, event,
                                     compose_reinject(sdir, meta, reason))
+            elif journaled:
+                out = maybe_nudge(sdir, meta, agent, event)
 
     elif event == "stop":
         stale, n = checkpoint_is_stale(sdir, meta)
@@ -982,6 +1162,8 @@ def _handle_locked(agent, event, norm, proj, ident, key):
                 and not norm.get("stop_hook_active")
                 and not blocked_recently):
             meta["last_stop_block"] = iso()
+            meta["stop_block_pending"] = True  # cleared at the next clean
+            # stop or prompt; while set, nudges must not promise a block
             reason = (
                 "agent-memory: your working-state file is stale — %d action(s)"
                 " were performed after it was last written. Update %s now so"
@@ -992,6 +1174,7 @@ def _handle_locked(agent, event, norm, proj, ident, key):
             out = render_stop_block(agent, reason)
         else:
             meta["clean_stop_at"] = iso()
+            meta.pop("stop_block_pending", None)
 
     elif event in ("pre-compact", "post-compact"):
         journal(sdir, "compact", phase=event, trigger=norm.get("trigger"))

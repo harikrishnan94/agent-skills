@@ -109,7 +109,7 @@ Six normalized events, dispatched as `agent_memory.py hook <agent> <event>`:
 | --- | --- |
 | `session-start` | create/adopt session record; inject state (own state on resume/compact, or resumable candidates on a fresh session) |
 | `prompt` | journal the prompt; on Codex, perform pending re-injection |
-| `post-tool` | journal state-changing tools; on Cursor/Copilot/Codex, perform pending re-injection |
+| `post-tool` | journal state-changing tools; perform pending re-injection; else fire the mid-turn staleness **nudge** when due (never on subagent-fired events) |
 | `stop` | staleness check — block once (loop-guarded) if work happened after the last checkpoint write |
 | `pre-compact` / `post-compact` | journal; arm re-injection on agents whose session-start does not re-fire after compaction |
 | `session-end` | record clean end + reason |
@@ -124,8 +124,10 @@ Six normalized events, dispatched as `agent_memory.py hook <agent> <event>`:
 | stop can force continue | yes (`decision:block`, `stop_hook_active` guard) | yes (JSON-only, same guard) | yes (`followup_message`, interactive only, `loop_limit`) | yes (`decision:block`) |
 | session-end event | yes | **no** | yes (fires per CLI process exit) | yes |
 | post-compaction recovery | SessionStart(`compact`) re-injects | next `prompt` re-injects | next `post-tool` re-injects | next `post-tool` re-injects |
-| injection size limit | generous | **~2,500 tokens** (larger output is spilled to a file) | none documented | **10 KB** merged per event |
-| special risk | — | **trust gate**: untrusted hooks silently skipped in `codex exec` | `beforeSubmitPrompt`/`stop` don't fire in `-p` print mode | hook configs load at CLI startup only |
+| injection size limit | generous (10k chars/output) | **~2,500 tokens** (larger output is spilled to a file) | none documented | **10 KB** merged per event |
+| voluntary mid-turn checkpointing (live-probed 2026-07-14, n=1 each) | **no** — stop-hook-forced | **yes** — per-step (5 writes in one turn) | no — stop-hook-forced | **no** — stop-hook-forced (0 writes across a 5-tool turn) |
+| mid-turn nudge delivery | yes (docs-confirmed: lands next to the tool result) | source-confirmed sink; dormant in practice (self-checkpoints before threshold) | **emitted but dropped upstream** (staff-confirmed bug, ≤ v3.7.x) | **yes — live-verified on 1.0.70**; regression-prone channel (#2980) |
+| special risk | Task-subagent tools fire hooks under the parent session id (payload carries `agent_id`/`agent_type` — injections are gated on it) | **trust gate**: untrusted hooks silently skipped in `codex exec` | `beforeSubmitPrompt`/`stop` don't fire in `-p` print mode | hook configs load at CLI startup only; denied tool calls fire no postToolUse |
 
 ### Per-agent guarantees and degraded modes
 
@@ -147,24 +149,36 @@ skips them (`doctor` warns about this).
 covered mechanically by the **gap detector** (a journaled event after a
 45-minute silence or after a recorded sessionEnd arms re-injection) and the
 **compaction detector** (preCompact arms re-injection); the next tool call
-restores state. In `cursor-agent -p` print mode, prompt and stop hooks do not
-fire — staleness enforcement is degraded to the next-session warning. Cursor
-has no reliable global instruction file, so the injected rules are the only
-standing instructions; the re-injection path is what makes this safe.
-Cursor passes `workspace_roots`, not `cwd`.
+restores state. **Known upstream bug (staff-confirmed, ≤ v3.7.x): the
+`postToolUse` `additional_context` we emit is accepted by the hook runner but
+never delivered to the model** — so re-injection and nudges are inert on
+Cursor until that ships; the working deliveries are the new-session start
+(including candidates + breadcrumbs) and the `followup_message` stop channel.
+In `cursor-agent -p` print mode, prompt and stop hooks do not fire —
+staleness enforcement is degraded to the next-session warning. Cursor has no
+reliable global instruction file, so the injected rules are the only standing
+instructions. Cursor passes `workspace_roots`, not `cwd`.
 
 **Copilot CLI** — sessionStart fires on resume (source `resume`), preCompact
 cannot inject and has no postCompact, so post-compaction recovery lands on
-the next tool call. Injection capped at 10 KB (our budget stays under 8 KB).
+the next tool call. postToolUse injection is live-verified end-to-end on
+1.0.70 (the text appears in model request payloads), and agentStop honors the
+Claude-shaped `{"decision":"block","reason"}` with auto-resume — but the
+channel has a regression history (copilot-cli #2980, #2652, #3727): re-smoke
+after CLI upgrades. Injection capped at 10 KB (our budget stays under 8 KB).
 `userPromptSubmitted` is observe-only. Hook files are read at CLI startup
-only. The durable ingest lives in `~/.copilot/copilot-instructions.md`.
+only (the installer prints a restart reminder when the wiring changes; the
+adapter script itself updates in place). Denied tool calls fire no
+postToolUse, so an all-denied turn is invisible to the staleness counter.
+The durable ingest lives in `~/.copilot/copilot-instructions.md`.
 
 ### What is captured, uniformly and not
 
 - Uniform (all four): session start/end boundaries*, prompts*, state-changing
-  tool calls, compaction markers*, stop verdicts*, adoption lineage,
-  worktree/cwd, timestamps. (*subject to the per-agent gaps above: Codex has
-  no session-end; Cursor `-p` mode misses prompt/stop.)
+  tool calls, compaction markers*, stop verdicts*, nudge deliveries (with
+  uncheckpointed count and escalation level), adoption lineage, worktree/cwd,
+  timestamps. (*subject to the per-agent gaps above: Codex has no
+  session-end; Cursor `-p` mode misses prompt/stop.)
 - Agent-specific, recorded when offered: `transcript_path`, session `source`,
   end `reason`.
 - Not captured by any supported interface: model reasoning, in-context
@@ -235,21 +249,76 @@ Distinguishing the cases in problem statement §1:
   crashes logs to `~/.agent-memory/log/hooks.log` and exits 0 (never breaks
   the host agent).
 
-## Staleness enforcement
+## Staleness enforcement (two stages)
 
-At `stop`, the checkpoint is stale when ≥ `AGENT_MEMORY_STALE_TOOLS` (3)
-state-changing tool calls were journaled after `state.md` was last written
-(≥ 1 if the state is still the untouched template). If stale, the hook blocks
-the stop once with instructions to update the file. Guards against loops:
-`stop_hook_active` (Claude/Codex payload field), a 30-minute per-session
-rate limit, and Cursor's own `loop_limit`. A stop the *user* caused is never
-blocked: Cursor reports `status: aborted|error` and the hook stands down
-(Codex exposes no such signal on its Stop event — a user interrupt there can
-trigger one enforcement block; the rate limit bounds the annoyance).
-The model's own writes to the state file are excluded from the work counter,
-and prompts never count — a tool-free Q&A session is never declared stale.
-`AGENT_MEMORY_ENFORCE=soft` downgrades blocking to journal-only; the
-staleness verdict still surfaces in the next session's injection either way.
+**Stage 1 — advisory mid-turn nudge (post-tool).** Live probes (2026-07-14)
+showed only Codex checkpoints voluntarily mid-turn; Claude, Cursor, and
+Copilot write state.md only when the stop hook forces it, so a mid-turn crash
+loses the whole turn. The nudge closes that gap: when
+≥ `AGENT_MEMORY_NUDGE_TOOLS` (5; template state: 2; `0` disables)
+state-changing tool calls accumulated since the last state write, the
+post-tool hook injects a one-line reminder to checkpoint now. Throttles, all
+ours (no platform dedups repeated injections):
+
+- **Recency guard** — no nudge within `AGENT_MEMORY_NUDGE_COOLDOWN_MIN` (5)
+  minutes of the last nudge, the last state-carrying injection, or the last
+  stop block. Session-start stamps `last_inject`, so the first window after
+  any start/compact is a deliberate blackout (the state was just delivered).
+- **Episode cap** — at most two reminders per staleness episode (the second
+  escalates, worded to promise only what the stop hook will actually do,
+  including under `ENFORCE=soft`); after that, silence — the stop block is
+  stage 3 of the same episode. A state write closes the episode.
+- **Subagent gate** — events fired by Claude Task subagents (detected via
+  `agent_id`/`agent_type` in the payload) journal their work but never
+  receive a nudge or consume a pending re-injection: injected text would land
+  in the subagent's context and tell it to overwrite the parent's checkpoint.
+- The nudge fires on all four agents' post-tool channels; it is inert on
+  Cursor (upstream drops the context — self-activates when fixed) and
+  near-dormant on Codex (voluntary cadence rarely crosses the threshold).
+
+Each delivery is journaled (`{"ev": "nudge", "uncheckpointed": n, "count": c}`),
+so compliance is measurable: a `nudge` followed by a state-mtime advance is a
+model that acted. Cost: the staleness scan runs per mutating tool call outside
+the cooldown window (journal ≤ 2 MB + one rotation; accepted over caching
+complexity).
+
+**Stage 2 — blocking stop.** At `stop`, the checkpoint is stale when
+≥ `AGENT_MEMORY_STALE_TOOLS` (3) state-changing tool calls were journaled
+after `state.md` was last written (≥ 1 if the state is still the untouched
+template). If stale, the hook blocks the stop once with instructions to
+update the file. Guards against loops: `stop_hook_active` (Claude/Codex
+payload field), a 30-minute per-session rate limit, and Cursor's own
+`loop_limit`. A stop the *user* caused is never blocked: Cursor reports
+`status: aborted|error` and the hook stands down (Codex exposes no such
+signal on its Stop event — a user interrupt there can trigger one enforcement
+block; the rate limit bounds the annoyance). The model's own writes to the
+state file are excluded from the work counter, and prompts never count — a
+tool-free Q&A session is never declared stale. `AGENT_MEMORY_ENFORCE=soft`
+downgrades blocking to journal-only (the nudge still fires — soft means
+"don't interrupt", advisory context is welcome); the staleness verdict still
+surfaces in the next session's injection either way.
+
+Double-registered hooks (e.g. Codex honoring both `config.toml` and
+`hooks.json`) would fire twice per tool and double every count: identical
+back-to-back journal records within 0.5 s are collapsed at read time, so
+thresholds and the `n` quoted in enforcement messages reflect real activity
+(`doctor` still warns about the duplicate registration itself). The collapse
+is deliberately narrow — never for records without a target (distinct
+NotebookEdit/MCP calls would alias) — because eating real work would silently
+disarm the stop block; a double-fired target-less tool counting twice is the
+safer error.
+
+## Stale-state breadcrumbs
+
+Wherever a **stale** state file is injected, a short auto-generated digest of
+the uncheckpointed tool journal tail (last 10 events + total) is appended
+after the state body — raw evidence of what happened after the last
+checkpoint, requiring zero model cooperation. Delivery points: resume/compact
+re-injection, the session-start stale warning, and the fresh-session
+candidates offer (the top candidate's tail — this is the one path every
+agent receives on a working channel, and the only one Cursor gets). The
+digest is appended before truncation, so an oversized state body trims the
+breadcrumbs first, never the reverse.
 
 ## Querying history
 
@@ -271,8 +340,12 @@ Retention: `prune --days N` moves ended sessions to the project archive
 Injected context is budgeted, not replayed: session-start injects one state
 (≤ ~8 KB after truncation) + candidate summaries; re-injection injects one
 state; everything else is on-demand via `search`/`show`. The 8 KB default
-(`AGENT_MEMORY_MAX_INJECT`) respects the tightest platform limits (Codex
-2.5k-token spill, Copilot 10 KB cap).
+(`AGENT_MEMORY_MAX_INJECT`) respects Copilot's 10 KB cap, but 8 KB of dense
+text is ~2,400–2,700 tokens — straddling Codex's ~2,500-token spill — so
+Codex injections are capped tighter (6 KB, `INJECT_BUDGETS`), and the
+candidates branch applies a whole-message cap. Nudges add ≤ ~400 bytes at
+most twice per staleness episode; breadcrumbs add ≤ ~1.5 KB and only when a
+stale state is being delivered anyway.
 
 ## Installation, validation, drift
 
@@ -320,6 +393,7 @@ Exit code: 0 ok/warn, 1 on failures. `--json` for machines.
 | Symptom | Recovery |
 | --- | --- |
 | hooks seem silent | `doctor`; on Codex check the trust gate; on Copilot restart the CLI |
+| mid-turn nudges too chatty / unwanted | `AGENT_MEMORY_NUDGE_TOOLS=0` disables them (stop-block enforcement unaffected); raise `AGENT_MEMORY_NUDGE_COOLDOWN_MIN` to space them out |
 | state file wrong/corrupt | previous versions in `archive/` (after `fresh`), journal shows what happened since |
 | two sessions fought over a task | both states exist under their own sessions; `status` + `show` both, adopt the survivor |
 | store schema newer than code | `git pull` the clone (doctor fails closed) |
