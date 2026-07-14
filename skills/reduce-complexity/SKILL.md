@@ -1,12 +1,14 @@
 ---
 name: reduce-complexity
 description: >-
-  Report-only structural review of an in-progress change — a PR or feature
-  branch — for accidental complexity accreted while the change was built.
-  Use when the user says "reduce complexity", "simplify this PR", "clean up
-  this branch before review", "did this change accrete cruft", or asks
-  whether an in-review change could be expressed more simply. Not for
-  line-level style cleanup (humanize) or bug-hunting (code review).
+  Structural review of an in-progress change — a PR or feature branch — for
+  accidental complexity accreted while the change was built. Told to
+  "reduce complexity", "simplify this PR", or "clean up this branch before
+  review", it applies the proven-safe simplifications by default and
+  reports what changed; asked a question — "did this change accrete
+  cruft", could this be expressed more simply — or told "report only", it
+  reviews without editing. Not for line-level style cleanup (humanize) or
+  bug-hunting (code review).
 ---
 
 # Reduce complexity: find what the change no longer needs
@@ -19,14 +21,20 @@ change is still open.
 
 Three properties govern everything below:
 
-- **Report-only.** Never apply edits; the repository tree is read-only for
-  this skill — git commands and file reads only. The product is a report.
+- **Fix by default, evidence-gated.** On an imperative invocation, findings
+  that clear Step 7's gate are applied to the working tree; everything
+  weaker ships only as a report entry. A question-phrased invocation ("did
+  this change accrete cruft?") or an explicit "just report" / "don't change
+  anything" makes the entire run read-only — git commands and file reads
+  only.
 - **Base-commit-scoped.** Every finding lives in the diff between the branch
   and an explicitly established base commit, not in the codebase at large.
+  Applied edits stay anchored there too; Step 7 bounds the few out-of-diff
+  lines a mechanical fix can force.
 - **Structural.** Line- and function-level tells — comment noise, defensive
-  theater, naming — are the `humanize` skill's territory; bug-hunting and
-  applied fixes belong to code-review tooling. This skill judges how the
-  change is put together.
+  theater, naming — are the `humanize` skill's territory; bug-hunting
+  belongs to code-review tooling. This skill judges how the change is put
+  together.
 
 ## Hard rules
 
@@ -65,7 +73,8 @@ discarded. When a rule and an apparent finding conflict, the rule wins.
 - **Coverage gates confidence.** A behavior-preservation claim about code no
   test exercises is speculative by definition. Check whether tests cover each
   finding's behavior, say so in the finding, and demote findings over
-  uncovered code.
+  uncovered code. Deletions of provably dead code answer to the liveness
+  protocol's receipts instead — deadness, not preservation, is their claim.
 - **Line count is not the metric.** A correct simplification may add
   functions; the measure is fewer entangled concerns, less state, fewer
   interacting branches. Extraction is not the default fix — inlining is
@@ -278,8 +287,9 @@ third becomes the finding's impact line. Drop without exception:
   before/after sketch, or whose sketch is a no-op — "verify that" and
   "consider ensuring" are not findings.
 
-A reportable finding's fix deletes or collapses a named artifact — a flag,
-branch, parameter, adapter, file, or duplicated block.
+A reportable finding's fix deletes, collapses, or rewrites a named
+artifact — a flag, branch, parameter, adapter, file, duplicated block, or
+stale name or comment.
 
 Before emitting, re-run the four Step-5 tests against every drafted finding
 as if seeing it for the first time — mandatory for anything carrying a
@@ -292,14 +302,84 @@ should die here — the dead ones go to the dropped-candidates list — and a
 short or empty report means the change is clean; saying so is a correct
 outcome.
 
+## Step 7 — Apply what the evidence supports
+
+Mode first. An imperative invocation — "reduce complexity", "simplify this
+PR", "clean up this branch" — applies surviving findings before the report
+is written. A question-phrased invocation ("did this change accrete
+cruft?") or an explicit "just report" / "don't change anything" is a
+report-only run: skip this step and, for questions, close the report by
+offering to apply.
+
+Preflight, before the first edit:
+
+- Run the repo's verification once on the untouched tree — the narrowest
+  test selection exercising the diff plus the repo's standard quick gate
+  (build, typecheck), extended to the full suite when any deletion-type
+  finding is a candidate. This is the baseline: only failures new against
+  it indict an edit. If verification cannot run in this environment (CI-only,
+  missing services or secrets), the run demotes to report-only, findings
+  marked unverifiable here.
+- Record every edit so it can be undone exactly: snapshot the pre-edit
+  state first (`git stash create`, noting the SHA without stashing, or a
+  saved diff plus copies of the files in scratch). "Revert" below means
+  inverse-applying the skill's own recorded edits — never `git restore` or
+  `git checkout` against HEAD, which on a dirty tree destroy the author's
+  uncommitted work.
+- Never edit a file that already carries uncommitted author changes;
+  findings touching one demote to report-only.
+
+The gate, per finding — the verdict must be *accidental, removable*, and
+the fix type picks its oracle:
+
+- **Restructures** — inline, collapse, hoist, unify, dedup, decide-once:
+  need the remove-verdict evidence bar (control-flow proof, clean
+  liveness-protocol run, or complete caller enumeration; a traced
+  execution and verbatim in-diff clone identity qualify as control-flow
+  grade for their shapes) AND existing tests exercising the behavior the
+  edit moves through.
+- **Deletions of production-dead code** — dead scaffolding, dead arms,
+  needless visibility, config residue orphaned by this diff's own
+  deletions: the clean liveness run is the coverage; dead code has no
+  tests to demand. The surviving suite must still pass. In the test-alive
+  case, delete the symbol and its tests together and verify with the full
+  remaining suite.
+- **Text-only edits** — stale narrative, comment rewrites, finishing a
+  rename: the post-apply verification suffices.
+- **Never apply — report only:** ambiguous findings and anything phrased
+  as a question; *accidental but justified* shapes (isolating and labeling
+  is the author's call); tangled ride-alongs (splitting is the author's
+  decision); flag-management/config-side removals that need a rollout;
+  compound multi-file restructures; findings a previous report for this
+  branch already presented — the author has seen and not taken them; and
+  all pre-existing complexity.
+
+Apply and verify one finding at a time — apply, run the baseline's
+verification, keep or revert — so a failure indicts exactly one edit;
+after any revert, re-check that later findings' premises still hold. A
+failure reverts that finding's edit completely and demotes it to a report
+entry carrying the new-against-baseline failures as evidence; never leave
+an edit half-applied, and never weaken a test to keep one. A mechanical
+fix may force a few out-of-diff lines — the config entry orphaned by an
+in-diff deletion, a rename's missed call site: edit the minimal set and
+list each forced line in the finding's Status; a fix needing more than
+that is report-only.
+
+Follow each finding's own edit recipe — small behavior-preserving steps,
+structure-only, never mixed with behavior changes — and leave everything
+uncommitted for the author to keep or revert; commit only if asked.
+
 ## The report
 
 The bar first: a finding the author reads and declines to act on is a
 defect of this report, not of the author — when in doubt, the candidate
 goes to Dropped candidates. Report at most six findings, ranked by
-consequence. As the diff grows, raise the evidence bar and shorten the
-report, never lengthen it; weight severity by churn — the same shape
-matters more in a frequently-changed file than in a stable one.
+consequence. Applied findings are exempt from that cap — every edit surviving in the
+tree appears in full with its Status; the caps govern report-only
+findings. As the diff grows,
+raise the evidence bar and shorten the report, never lengthen it; weight
+severity by churn — the same shape matters more in a frequently-changed
+file than in a stable one.
 
 Each finding, in this structure:
 
@@ -315,16 +395,27 @@ Each finding, in this structure:
   or obscured information. Claim comprehension cost, never defect or
   maintenance economics — those don't follow from shape alone.
 - **Cleaner shape** — an edit recipe in small behavior-preserving steps,
-  landing as its own structure-only commit, separate from behavior changes;
+  landing as its own structure-only commit when the author lands it — the
+  skill leaves its edits uncommitted — separate from behavior changes;
   compound multi-file restructures get staged or demoted to follow-up.
 - **Behavior preservation** — every requirement the shape touches; the test
   coverage status; if uncovered, the test that would make the edit safe.
 - **Severity × disposition** — issue / suggestion / nit, crossed with:
   before merge / fine as a follow-up PR / question for the author. Pin
   severity to the concrete consequence, not the persuasiveness of the
-  write-up; every finding is non-blocking — present the evidence and let
-  the author decide. Signature- and hierarchy-crossing recommendations
-  carry the highest regression risk — weight them down.
+  write-up; every finding is non-blocking — an applied edit sits
+  uncommitted for the author to keep or revert, and a report-only finding
+  presents the evidence and lets the author decide. Signature- and
+  hierarchy-crossing recommendations carry the highest regression risk —
+  weight them down.
+- **Status** — *applied* (files touched, any forced out-of-diff lines, and
+  the verification receipt: the command run and its result against the
+  baseline); *applied, then reverted* (the new-against-baseline failure as
+  the receipt); or *report-only*, naming the Step 7 gate that stopped it —
+  ambiguous verdict, author's-call shape, uncovered behavior, dirty file,
+  rollout-gated, compound restructure, out-of-diff bound exceeded,
+  unverifiable here, or a question-phrased / user-requested report-only
+  run.
 
 Order the report: findings in this change, then pre-existing complexity the
 diff touches (labeled as such, never mixed in), then open questions, then
@@ -342,8 +433,10 @@ broad redesign is warranted only when a wrong abstraction boundary is
 itself the direct cause. Skip polish on code that is feature-flagged,
 experimental, or slated for deletion; suppress praise notes, out-of-diff
 opportunities, linter territory, and questions that only ask for
-explanation. Do not offer to apply the findings; the report is the whole
-product.
+explanation. Open the report with the tree state in one line — how many
+findings were applied, which files changed, and the verification result —
+so the author knows before reading anything else whether their working
+tree moved.
 
 A worked example of one finding:
 
@@ -365,6 +458,10 @@ A worked example of one finding:
 > **Behavior preservation:** the surviving arm is the one every caller
 > already exercises; `tests/test_export.py` covers it directly.
 > **Severity × disposition:** suggestion / before merge.
+> **Status:** applied — `src/export.py`, `src/cli.py`, `src/batch.py`,
+> `tests/test_export.py` edited, no forced out-of-diff lines;
+> `pytest tests/test_export.py` 23 passed, full suite matches the green
+> baseline (412 passed). Left uncommitted for review.
 
 And a worked example of a candidate that dies in Step 6:
 
