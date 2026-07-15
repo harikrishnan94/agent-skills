@@ -37,8 +37,16 @@ exist. When you notice it, re-run the gate and read the raw output.
 boundaries explicitly ("do not modify X", "out of scope: Y"). This line
 survives every compression.>>
 
+**Run artifacts.** Everything this run writes about itself — worklog,
+REPORT.md, prereg, raw gate outputs — lives together in one work directory
+named for this task: <<ARTIFACTS_DIR — the location the user named, else
+the project's conventional temp/scratch dir; no automatic default — if no
+convention exists, ask or flag your choice in REPORT.md>>. Nothing goes in
+the repo tree or its commits.
+
 **Ambiguity.** Choose the option that best serves the Goal, record the call
-in <<WORKLOG_PATH default WORKLOG.md>> (what, why, revisit trigger), and
+in <<WORKLOG_PATH default: WORKLOG.md in the artifacts work dir>> (what,
+why, revisit trigger), and
 keep moving — except for decisions that are irreversible, destructive,
 production-facing, security-relevant, or materially scope-changing:
 
@@ -162,8 +170,9 @@ Claims tier by role, declared at pre-registration; when unsure, tier UP:
   acceptance.
 
 **Pre-register before gathering acceptance evidence.** Per unit, before
-implementing: write in <<WORKLOG_PATH>> [FULL: in <<PREREG_PATH default
-PREREG.md>>] the expected outcome, the exact gate invocation that will
+implementing: write in <<WORKLOG_PATH>> [FULL: in <<PREREG_PATH default:
+PREREG.md in the artifacts work dir>>] the expected outcome, the exact gate
+invocation that will
 prove it, and what result would refute it. The entry must exist **before**
 the implementing change (the ordering is checkable in history — the
 verifier checks it). Discovery and orientation before pre-registering is
@@ -262,7 +271,8 @@ convention.>>
 
 1. The work itself: <<the artifact | small reviewable commits, per Source
    control below>>.
-2. **REPORT.md** — at the top: per-unit verdict (green / UNSETTLED / not
+2. **REPORT.md** (in the artifacts work dir, like every run artifact) — at
+   the top: per-unit verdict (green / UNSETTLED / not
    done), any authorization-required flags, risk-accepted leads, and
    HIGH-IMPACT assumptions; then, per goal intention, the measured outcome
    and its mechanism. Include the **evidence matrix** — one row per
@@ -285,8 +295,9 @@ force-push; never touch git config; do not push unless explicitly asked.
 
 Small reviewable commits, one logical change each — not one mega-diff.
 Never commit on red. Messages say what + why + the gate that proved it.
-Commit the worklog/prereg/report alongside the code they document — history
-is the audit trail.
+The artifacts work dir stays outside the repo and is never committed;
+REPORT.md names the exact commits, so report + history together remain the
+audit trail.
 
 ## Definition of done (all required)
 
