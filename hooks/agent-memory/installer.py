@@ -158,7 +158,9 @@ def install_claude(home, repo):
         log("claude", "ERROR: settings.json 'permissions.allow' is not a list"
             " — fix it and re-run")
         return False
-    allow[:] = [r for r in allow if "session-scratchpads" not in str(r)]
+    allow[:] = [r for r in allow
+                if "session-scratchpads" not in str(r)
+                and r != "Write(~/.agent-memory/**)"]
     for rule in snip["permissions"]["allow"]:
         if rule not in allow:
             allow.append(rule)

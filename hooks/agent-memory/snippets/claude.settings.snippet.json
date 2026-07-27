@@ -3,8 +3,7 @@
   "permissions": {
     "allow": [
       "Read(~/.agent-memory/**)",
-      "Edit(~/.agent-memory/**)",
-      "Write(~/.agent-memory/**)"
+      "Edit(~/.agent-memory/**)"
     ]
   },
   "hooks": {
