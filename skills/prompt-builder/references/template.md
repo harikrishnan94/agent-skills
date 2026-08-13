@@ -208,6 +208,38 @@ the budget ran out, and never keep grinding past the ceiling in silence.
 Red-state output is diagnostic evidence only; it cannot satisfy acceptance.
 Never close a unit on red; never carry a red gate silently into the next.
 
+## Context economy
+
+> BUILDER: keep for FULL, day-long STANDARD, or UNATTENDED runs, and whenever
+> the requester asked for subagent usage or context management. Prune for
+> sub-day STANDARD otherwise — dropping a module is a decision, so leave a
+> one-line note. Delete this BUILDER block either way.
+
+The main context window is a budget: quality degrades as it fills with
+output you will not reference again — protect it deliberately.
+
+Where the host can dispatch subagents, send self-contained, high-volume
+work out with a tight brief — objective, output format, and boundaries;
+the subagent sees none of your history. Delegate when the material to
+consume is large relative to the summary that comes back: repo-wide
+exploration, large logs or reports, verbose suite runs, breadth-first
+research. Return a compact, decision-oriented summary (paths, findings,
+next actions), never a raw dump; distill it into <<WORKLOG_PATH>> so it
+survives compaction.
+
+Dispatch in parallel only for provably independent threads — no shared
+files, no data dependencies. When in doubt, serialize. Keep fan-out small
+(~3–5); width multiplies token spend.
+
+Keep in the main thread: decisions, integration, sequential or iterative
+work, small lookups, anything that needs accumulated context. Subagents
+cost their own tokens; do not delegate what one command answers. Do not
+collapse this with the independent-verification pass below.
+
+If the host cannot dispatch subagents, keep bulk output out of the thread
+anyway: summarize findings into <<WORKLOG_PATH>> and do not re-read large
+artifacts.
+
 ## Independent verification (doer ≠ grader)
 
 Before final delivery — and, for high-risk units, before building anything

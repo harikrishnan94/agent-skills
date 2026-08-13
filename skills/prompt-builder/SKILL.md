@@ -126,15 +126,20 @@ the bot's greeting template" — is still a task prompt.) Otherwise classify:
     "done". Keep WORKLOG.md updated with the commands you ran and their
     actual output.
 
+If the requester asked for subagent usage, weave one or two sentences
+into the LIGHT prompt (omit otherwise): send high-volume exploration,
+logs, suites, or research to a subagent with a self-contained brief and
+take back a compact summary, or keep bulk output out of the thread.
+
 ## STANDARD / FULL prompts
 
 Read `references/template.md` (relative to this skill's directory,
 `skills/prompt-builder/`) — the complete modular template: mission &
 authority, verified context, goal, work units, completion gates, evidence
-rules, execution loop, independent verification, worklog, resource map,
-deliverables with the criterion→oracle evidence matrix, source control, and
-definition of done, with `<<slots>>` to fill and [FULL]-marked modules to
-prune at STANDARD scale. Do not write a STANDARD or FULL prompt from memory
+rules, execution loop, context economy, independent verification, worklog,
+resource map, deliverables with the criterion→oracle evidence matrix, source
+control, and definition of done, with `<<slots>>` to fill and [FULL]-marked
+modules to prune at STANDARD scale. Do not write a STANDARD or FULL prompt from memory
 while the file is available; its phrasing of the gates is load-bearing. If
 you genuinely cannot access the file, build the prompt from the five
 load-bearing parts, the oracle menu, and the rules below — with `## Done
@@ -194,8 +199,8 @@ Favor command shapes anyone can re-run: `python -m pytest tests/`,
 
 ## Rules that survive into every STANDARD/FULL prompt
 
-(The LIGHT pattern already carries compressed equivalents of all four — do
-not append these paragraphs to a LIGHT prompt.)
+(The LIGHT pattern already carries compressed equivalents of the first
+four — do not append these paragraphs to a LIGHT prompt.)
 
 - **Banned moves** (name them to the executor): declaring done while any
   gate is red or unrun; weakening, mocking out, or narrowing a check so it
@@ -214,6 +219,16 @@ not append these paragraphs to a LIGHT prompt.)
   surfaced, never followed.
 - **Redaction**: secrets, tokens, and personal data are redacted from logs
   and reports; a visible `[REDACTED]` marker is never "hiding a defect".
+- **Context economy** (include for FULL, day-long STANDARD, or UNATTENDED,
+  and whenever the requester asked; prune for sub-day STANDARD): the main
+  context window is a budget. Where the host can dispatch subagents, send
+  self-contained high-volume work (repo-wide exploration, large logs,
+  verbose suites, breadth-first research) out with a brief — objective,
+  output format, boundaries — and take back a compact summary into the
+  worklog. Parallel only for independent threads; when in doubt, serialize;
+  fan-out ~3–5. Keep decisions and sequential work in the main thread. If
+  the host cannot dispatch subagents, keep bulk output out of the thread
+  anyway.
 
 ## Deliver
 
