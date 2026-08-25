@@ -122,9 +122,16 @@ Code), start it in the background and poll:
     python3 <skill-dir>/scripts/cursor_delegate.py status --out /tmp/delegate-<task>
 
 `status` is safe to poll at any point and prints one compact block — RUNNING with
-elapsed time against the cap, or FINISHED / TIMED OUT, plus counts of edits and
-commands and the latest command it ran. It reads the partial log, which the CLI
-flushes as it goes, so progress is visible from the first tool call.
+elapsed time against the cap, or FINISHED / TIMED OUT, then the authoritative
+line first: **`tree:` how many paths git says changed since the baseline**,
+followed by what the log shows (files edited, commands run, a breakdown of every
+tool called, anything mid-call, the latest command).
+
+**The log is a floor, not a census.** Writes made by shell redirection never
+appear as edits at all; a call that is still executing has no completed record
+yet; and an edit the CLI rejected for an ambiguous match names no path. So a
+low count is not evidence of an idle agent — that is why `status` leads with git
+and says so. When the two views disagree, git is right.
 
 **Give the user the run directory as soon as the run starts.** It is printed on
 launch. When this skill runs inside a subagent or background task, your own
@@ -132,7 +139,9 @@ output may never reach the user, so the run directory is their only way to watch
 the work themselves — and their only handle on it if your session ends first.
 
 Poll on a scale that matches the work: a delegated implementation takes minutes,
-so checking every 30–60 s is plenty. Report progress from `status`, never a guess.
+so checking every 30–60 s is plenty. Report progress from `status`, never a
+guess — and never report a quiet progress line as "the agent is idle" without
+checking `git status` in the target tree yourself.
 
 ## Step 4 — Verify
 
@@ -209,6 +218,11 @@ structured cross-model review of a spec, plan, or diff, prefer
   the user's installed Cursor skills. Expect its behavior to reflect them.
 - In `--print` mode Cursor's prompt and stop hooks do not fire; `postToolUse`
   does.
+- Edits the delegate makes to agent state stores (`~/.agent-memory`, `~/.cursor`
+  and friends) are counted separately from your change. That exemption is
+  anchored to those directories under `$HOME` and never applies to anything
+  inside the target directory — a repository living under `.claude/worktrees/`
+  or `.cursor/projects/` is the work, not bookkeeping.
 - Path handling is not bulletproof. In one test, against a nested directory
   whose name began with `-`, the CLI collapsed a path separator and ran the
   whole task in a phantom directory — reporting success the entire time.

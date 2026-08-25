@@ -51,14 +51,37 @@ MAX_LISTED = 40
 GRACE_SECONDS = 3
 PREFLIGHT_TIMEOUT = 60
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-# Every delegated run touches these: the agent-memory hooks write a working-state
-# file, and cursor-agent keeps its own session state. Counting them as strays
-# would flag a mismatch on every single run.
-HOUSEKEEPING = ("/.agent-memory/", "/.cursor/", "/.codex/", "/.claude/")
+# Agent state stores, matched only directly under $HOME. Delegated runs write to
+# these constantly (agent-memory checkpoints, CLI session state) and counting
+# them as real work would flag a mismatch on every run.
+HOME_STATE_DIRS = (".agent-memory", ".cursor", ".codex", ".claude", ".copilot")
 
 
-def housekeeping(path):
-    return any(part in path for part in HOUSEKEEPING)
+def norm(path):
+    return os.path.normpath(os.path.abspath(os.path.expanduser(str(path))))
+
+
+def within(path, root):
+    """True when path is root or sits beneath it, compared by path component."""
+    if not path or not root:
+        return False
+    path, root = norm(path), norm(root)
+    return path == root or path.startswith(root + os.sep)
+
+
+def housekeeping(path, cwd=None):
+    """A write to an agent's own state store rather than to the work itself.
+
+    The target directory always wins. A repository that happens to live under
+    `.claude/worktrees/` — or under `.cursor/projects/` — is the work, not a
+    chore: an earlier substring test on "/.claude/" bucketed every file in such
+    a tree as housekeeping and reported real edits as `0 edit(s)` while the
+    delegate was actively writing them.
+    """
+    if cwd and within(path, cwd):
+        return False
+    home = Path.home()
+    return any(within(path, home / d) for d in HOME_STATE_DIRS)
 
 
 def die(msg, code=2):
@@ -256,22 +279,48 @@ def final_result(path):
 
 
 def digest(path, cwd=None, max_chars=DEFAULT_MAX_CHARS):
-    edits, chores, reads, shells = [], [], 0, []
-    for name, args, result in tool_calls(path):
+    """Everything the log can tell us. Counts are a floor, never a ceiling:
+    writes made by shell redirection never appear as edits, so the git view in
+    `status` and `verify` is the authority on what changed."""
+    edits, chores, shells = [], [], []
+    edit_calls = unresolved_edits = 0
+    tools, pending = {}, {}
+
+    for event in events(path):
+        if event.get("type") != "tool_call":
+            continue
+        body = event.get("tool_call") or {}
+        name = next((k for k in body if k.endswith("ToolCall")), None)
+        if not name:
+            continue
+        spec = body.get(name) if isinstance(body.get(name), dict) else {}
+        args = spec.get("args") or {}
+        call_id = event.get("call_id") or body.get("toolCallId")
+        subtype = event.get("subtype")
+
+        if subtype == "started":
+            pending[call_id] = (name, args.get("path") or args.get("command") or "")
+            continue
+        if subtype != "completed":
+            continue
+        pending.pop(call_id, None)
+        tools[name] = tools.get(name, 0) + 1
+
         if name == "editToolCall":
             target = args.get("path")
             if not target:
-                continue
-            bucket = chores if housekeeping(target) else edits
-            if target not in bucket:
-                bucket.append(target)
-        elif name == "readToolCall":
-            reads += 1
+                unresolved_edits += 1
+            elif housekeeping(target, cwd):
+                if target not in chores:
+                    chores.append(target)
+            else:
+                edit_calls += 1
+                if target not in edits:
+                    edits.append(target)
         elif name == "shellToolCall":
-            kind, payload = outcome(result)
+            kind, payload = outcome(spec.get("result"))
             shells.append({
-                "command": (args.get("command") if args else None)
-                           or payload.get("command") or "",
+                "command": args.get("command") or payload.get("command") or "",
                 "kind": kind,
                 "exit": payload.get("exitCode"),
                 "wd": payload.get("workingDirectory") or "",
@@ -279,21 +328,26 @@ def digest(path, cwd=None, max_chars=DEFAULT_MAX_CHARS):
                 "stderr": clean(payload.get("stderr"), 300),
             })
 
-    resolved = str(Path(cwd).resolve()) if cwd else None
-    stray = sorted({s["wd"] for s in shells if s["wd"] and resolved
-                    and not s["wd"].startswith(resolved)
-                    and not housekeeping(s["wd"])})
-    outside = [p for p in edits if resolved and not p.startswith(resolved)]
+    # No housekeeping exemption here: the agent-memory hooks are separate
+    # processes, so a shell tool call has no honest reason to run inside an
+    # agent state dir. Any working directory outside the target is stray.
+    stray = sorted({s["wd"] for s in shells
+                    if s["wd"] and cwd and not within(s["wd"], cwd)})
+    outside = [q for q in edits if cwd and not within(q, cwd)]
 
     return {
         "final": final_result(path),
         "edits": edits,
+        "edit_calls": edit_calls,
+        "unresolved_edits": unresolved_edits,
         "edits_outside_cwd": outside,
         "housekeeping_edits": chores,
-        "reads": reads,
+        "tools": tools,
+        "in_flight": sorted(pending.values()),
+        "reads": tools.get("readToolCall", 0),
         "shells": shells,
-        "shells_failed": [s for s in shells if s["kind"] == "failure"],
-        "shells_blocked": [s for s in shells if s["kind"] == "blocked"],
+        "shells_failed": [q for q in shells if q["kind"] == "failure"],
+        "shells_blocked": [q for q in shells if q["kind"] == "blocked"],
         "stray_working_dirs": stray,
         "max_chars": max_chars,
     }
@@ -339,24 +393,39 @@ def render(d, cwd=None, live=False):
         out.append("status: NO RESULT EVENT — the run was killed or died before "
                    "finishing. Its partial edits are still on disk.")
 
+    if d["in_flight"]:
+        out.append("")
+        out.append("in flight right now (%d):" % len(d["in_flight"]))
+        for name, detail in d["in_flight"][:MAX_LISTED]:
+            out.append("  %s %s" % (name, clean(detail, 140)))
+
     out.append("")
-    out.append("files written via the edit tool (%d) — a delegate that uses "
-               "shell redirection instead will show up below:" % len(d["edits"]))
+    out.append("files written via the edit tool (%d file(s), %d call(s)) — this "
+               "is a floor: writes made by shell redirection never appear here, "
+               "so trust git over this list:"
+               % (len(d["edits"]), d["edit_calls"]))
     for path in d["edits"][:MAX_LISTED]:
         rel = path
-        if cwd:
-            try:
-                rel = str(Path(path).relative_to(Path(cwd).resolve()))
-            except ValueError:
-                rel = path
+        if cwd and within(path, cwd):
+            rel = os.path.relpath(norm(path), norm(cwd))
         out.append("  %s" % rel)
     if len(d["edits"]) > MAX_LISTED:
         out.append("  … and %d more" % (len(d["edits"]) - MAX_LISTED))
     if not d["edits"]:
         out.append("  (none)")
+    if d["unresolved_edits"]:
+        out.append("  %d edit call(s) named no path (an ambiguous replace, "
+                   "typically) and are not counted above."
+                   % d["unresolved_edits"])
     if d["housekeeping_edits"]:
-        out.append("  (+%d agent-memory/session-state file(s), not your change)"
-                   % len(d["housekeeping_edits"]))
+        out.append("  (+%d agent state file(s) outside the target dir, not your "
+                   "change)" % len(d["housekeeping_edits"]))
+
+    if d["tools"]:
+        out.append("")
+        out.append("tool calls: %s" % ", ".join(
+            "%s=%d" % (k.replace("ToolCall", ""), v)
+            for k, v in sorted(d["tools"].items(), key=lambda kv: -kv[1])))
 
     out.append("")
     out.append("shell commands (%d attempted, %d failed, %d blocked):"
@@ -519,18 +588,55 @@ def do_status(out_dir, max_chars):
         print("no output yet.")
         return 0 if live else 1
 
-    d = digest(log, state.get("cwd"), max_chars)
-    print("progress: %d edit(s), %d shell command(s) (%d failed, %d blocked), "
-          "%d read(s)" % (len(d["edits"]), len(d["shells"]),
-                          len(d["shells_failed"]), len(d["shells_blocked"]),
-                          d["reads"]))
+    cwd = state.get("cwd")
+    d = digest(log, cwd, max_chars)
+
+    # The log is a floor — shell redirection writes never show up as edits, and
+    # a mid-write call has not been logged as completed yet. git is the only
+    # thing that knows what is actually on disk, so lead with it.
+    baseline = out_dir / "baseline.json"
+    if cwd and baseline.exists():
+        try:
+            recorded = json.loads(baseline.read_text())
+        except (OSError, ValueError):
+            recorded = None
+        if recorded and Path(recorded.get("cwd", cwd)).is_dir():
+            target = recorded.get("cwd", cwd)
+            new_entries, _ = changed_paths(Path(target), recorded)
+            print("tree: %d path(s) changed since baseline (git, authoritative)"
+                  % len(new_entries))
+            for entry in new_entries[:5]:
+                print("  %s" % entry)
+            if len(new_entries) > 5:
+                print("  … and %d more" % (len(new_entries) - 5))
+
+    print("log: %d file(s) edited in %d call(s), %d shell command(s) "
+          "(%d failed, %d blocked)"
+          % (len(d["edits"]), d["edit_calls"], len(d["shells"]),
+             len(d["shells_failed"]), len(d["shells_blocked"])))
+    if d["tools"]:
+        print("tool calls: %s" % ", ".join(
+            "%s=%d" % (k.replace("ToolCall", ""), v)
+            for k, v in sorted(d["tools"].items(), key=lambda kv: -kv[1])))
+    if d["in_flight"]:
+        print("in flight: %s" % "; ".join(
+            "%s %s" % (n, clean(t, 80)) for n, t in d["in_flight"][:3]))
     if d["shells"]:
         last = d["shells"][-1]
         print("latest command: [%s] %s" % (last["kind"], clean(last["command"], 120)))
     if d["edits"]:
         print("latest edit: %s" % d["edits"][-1])
+    if d["housekeeping_edits"]:
+        print("(+%d agent state file(s) outside the target dir)"
+              % len(d["housekeeping_edits"]))
+    for wd in d["stray_working_dirs"]:
+        print("WARNING: a command ran outside the target directory: %s" % wd)
+    for path in d["edits_outside_cwd"]:
+        print("WARNING: an edit landed outside the target directory: %s" % path)
     if live:
-        print("Not final. Do not verify or report until this says FINISHED.")
+        print("Not final. Do not verify or report until this says FINISHED. "
+              "Reads and edits with no completed call yet are invisible here — "
+              "a quiet line is not proof of an idle agent.")
     return 0
 
 
