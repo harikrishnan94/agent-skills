@@ -15,6 +15,7 @@ A skill is a small Markdown file with YAML frontmatter (`name` + `description`) 
 | [`brain-dump`](skills/brain-dump/SKILL.md) | Generate a per-workstream Done / Handover note by scanning agent sessions across Cursor, Claude Code, Codex, and Copilot CLI in a time window. |
 | [`humanize`](skills/humanize/SKILL.md) | Hold generated code to the bar a careful human author meets before a reviewer sees it: remove narration comments, defensive theater, padding, and generated-looking collateral; add the edge-case handling generated code tends to miss. Fixes an existing diff by default. |
 | [`clarify-intent-first`](skills/clarify-intent-first/SKILL.md) | Do read-only reconnaissance, then ask targeted clarifying questions before starting ambiguous or underspecified coding, debugging, refactoring, or investigation work. |
+| [`delegate-to-cursor`](skills/delegate-to-cursor/SKILL.md) | Offload the implementation typing of a settled plan to the Cursor CLI (`cursor-agent`) — reaching Grok, Gemini and GPT/Codex — while the calling agent keeps the planning and does the verification itself. Audits what the delegate actually did and flags claim/reality mismatches. |
 
 ## Hooks
 
