@@ -127,11 +127,17 @@ line first: **`tree:` how many paths git says changed since the baseline**,
 followed by what the log shows (files edited, commands run, a breakdown of every
 tool called, anything mid-call, the latest command).
 
-**The log is a floor, not a census.** Writes made by shell redirection never
-appear as edits at all; a call that is still executing has no completed record
-yet; and an edit the CLI rejected for an ambiguous match names no path. So a
-low count is not evidence of an idle agent — that is why `status` leads with git
-and says so. When the two views disagree, git is right.
+**The log is a floor, not a census.** A call still executing has no completed
+record yet; an edit the CLI rejected for an ambiguous match names no path; and
+writes made by shell commands are only partly visible — plain `>` / `>>`
+redirections are reported separately using the CLI's own command parse, but
+`sed -i`, `tee`, `cp`, `patch` and a script that opens a file itself are not
+detectable at all. So a low count is not evidence of an idle agent — that is why
+`status` leads with git and says so. When the views disagree, git is right.
+
+You do not need to pass `--cwd` to `summarize`: it recovers the target directory
+from the run's state file or the log's own init event, and prints which it used.
+Passing the wrong one, or none at all, used to make every path look foreign.
 
 **Give the user the run directory as soon as the run starts.** It is printed on
 launch. When this skill runs inside a subagent or background task, your own

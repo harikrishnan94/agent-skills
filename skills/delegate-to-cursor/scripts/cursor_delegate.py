@@ -57,15 +57,26 @@ ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 HOME_STATE_DIRS = (".agent-memory", ".cursor", ".codex", ".claude", ".copilot")
 
 
-def norm(path):
-    return os.path.normpath(os.path.abspath(os.path.expanduser(str(path))))
+def norm(path, base=None):
+    """Absolute, symlink-resolved form, for comparing two paths for identity.
+
+    realpath rather than abspath because /tmp is a symlink to /private/tmp on
+    macOS: with abspath, a delegate reporting /private/tmp/repo/x.py against a
+    --cwd of /tmp/repo looks like a write outside the target, which `verify`
+    escalates to a claim/reality mismatch. Relative paths resolve against the
+    run's directory, never the directory this script happens to run from.
+    """
+    path = os.path.expanduser(str(path))
+    if base and not os.path.isabs(path):
+        path = os.path.join(os.path.expanduser(str(base)), path)
+    return os.path.realpath(path)
 
 
 def within(path, root):
     """True when path is root or sits beneath it, compared by path component."""
     if not path or not root:
         return False
-    path, root = norm(path), norm(root)
+    path, root = norm(path, root), norm(root)
     return path == root or path.startswith(root + os.sep)
 
 
@@ -240,6 +251,46 @@ def events(path):
                 continue
 
 
+def log_cwd(path):
+    """The working directory the CLI itself recorded in its init event."""
+    for event in events(path):
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            return event.get("cwd")
+        if event.get("type") == "tool_call":
+            break
+    return None
+
+
+def discover_cwd(log, explicit=None):
+    """(cwd, source). Never make the caller pass a flag to avoid a wrong answer:
+    without a cwd every path looks foreign, and work inside a tree under an
+    agent state dir gets misfiled as bookkeeping."""
+    if explicit:
+        return str(explicit), "given"
+    state = read_state(Path(log).parent)
+    if state.get("cwd"):
+        return state["cwd"], "run.state"
+    found = log_cwd(log)
+    if found:
+        return found, "the log's init event"
+    return None, "unknown"
+
+
+# The arg that best identifies a call, per tool kind. Without `pattern` a glob
+# in flight printed as a bare tool name with no label.
+LABEL_KEYS = ("path", "command", "pattern", "query", "target_file", "url", "prompt")
+
+
+def describe(args):
+    if not isinstance(args, dict) or not args:
+        return ""
+    for key in LABEL_KEYS:
+        if args.get(key):
+            return str(args[key])
+    first = next(iter(args.items()))
+    return "%s=%s" % (first[0], first[1])
+
+
 def tool_calls(path):
     """Yield (name, args, result) for each completed tool call, in order."""
     for event in events(path):
@@ -282,7 +333,7 @@ def digest(path, cwd=None, max_chars=DEFAULT_MAX_CHARS):
     """Everything the log can tell us. Counts are a floor, never a ceiling:
     writes made by shell redirection never appear as edits, so the git view in
     `status` and `verify` is the authority on what changed."""
-    edits, chores, shells = [], [], []
+    edits, chores, shells, redirected = [], [], [], []
     edit_calls = unresolved_edits = 0
     tools, pending = {}, {}
 
@@ -299,7 +350,7 @@ def digest(path, cwd=None, max_chars=DEFAULT_MAX_CHARS):
         subtype = event.get("subtype")
 
         if subtype == "started":
-            pending[call_id] = (name, args.get("path") or args.get("command") or "")
+            pending[call_id] = (name, describe(args))
             continue
         if subtype != "completed":
             continue
@@ -319,6 +370,13 @@ def digest(path, cwd=None, max_chars=DEFAULT_MAX_CHARS):
                     edits.append(target)
         elif name == "shellToolCall":
             kind, payload = outcome(spec.get("result"))
+            if kind == "success":
+                for redirect in ((args.get("parsingResult") or {})
+                                 .get("redirects") or []):
+                    target = redirect.get("targetText")
+                    if (target and target not in redirected
+                            and not housekeeping(target, cwd)):
+                        redirected.append(target)
             shells.append({
                 "command": args.get("command") or payload.get("command") or "",
                 "kind": kind,
@@ -342,6 +400,7 @@ def digest(path, cwd=None, max_chars=DEFAULT_MAX_CHARS):
         "unresolved_edits": unresolved_edits,
         "edits_outside_cwd": outside,
         "housekeeping_edits": chores,
+        "redirect_writes": redirected,
         "tools": tools,
         "in_flight": sorted(pending.values()),
         "reads": tools.get("readToolCall", 0),
@@ -407,7 +466,7 @@ def render(d, cwd=None, live=False):
     for path in d["edits"][:MAX_LISTED]:
         rel = path
         if cwd and within(path, cwd):
-            rel = os.path.relpath(norm(path), norm(cwd))
+            rel = os.path.relpath(norm(path, cwd), norm(cwd))
         out.append("  %s" % rel)
     if len(d["edits"]) > MAX_LISTED:
         out.append("  … and %d more" % (len(d["edits"]) - MAX_LISTED))
@@ -420,6 +479,20 @@ def render(d, cwd=None, live=False):
     if d["housekeeping_edits"]:
         out.append("  (+%d agent state file(s) outside the target dir, not your "
                    "change)" % len(d["housekeeping_edits"]))
+
+    if d["redirect_writes"]:
+        out.append("")
+        out.append("files written by shell redirection (%d, from the CLI's own "
+                   "command parse — `sed -i` and friends still will not appear, "
+                   "so git remains the authority):" % len(d["redirect_writes"]))
+        for path in d["redirect_writes"][:MAX_LISTED]:
+            rel = path
+            if cwd and within(path, cwd):
+                rel = os.path.relpath(norm(path, cwd), norm(cwd))
+            out.append("  %s" % rel)
+        if len(d["redirect_writes"]) > MAX_LISTED:
+            out.append("  … and %d more"
+                       % (len(d["redirect_writes"]) - MAX_LISTED))
 
     if d["tools"]:
         out.append("")
@@ -626,6 +699,9 @@ def do_status(out_dir, max_chars):
         print("latest command: [%s] %s" % (last["kind"], clean(last["command"], 120)))
     if d["edits"]:
         print("latest edit: %s" % d["edits"][-1])
+    if d["redirect_writes"]:
+        print("shell redirection wrote %d file(s) (not counted as edits above)"
+              % len(d["redirect_writes"]))
     if d["housekeeping_edits"]:
         print("(+%d agent state file(s) outside the target dir)"
               % len(d["housekeeping_edits"]))
@@ -691,7 +767,7 @@ def do_run(args):
         except OSError as exc:
             die("could not start cursor-agent: %s" % exc)
         write_state(out_dir, pid=proc.pid, started_at=time.time(),
-                    timeout=args.timeout, model=args.model, cwd=str(cwd),
+                    timeout=args.timeout, model=args.model, cwd=norm(cwd),
                     ended_at=None, outcome=None)
         try:
             proc.communicate(brief.encode(), timeout=args.timeout)
@@ -786,11 +862,18 @@ def main():
         return do_run(args)
     if args.command == "summarize":
         log = Path(args.log).expanduser()
-        d = digest(log, args.cwd, args.max_chars)
+        cwd, source = discover_cwd(log, args.cwd)
+        d = digest(log, cwd, args.max_chars)
         if args.json:
-            print(json.dumps(d, indent=1, default=str))
+            print(json.dumps(dict(d, cwd=cwd, cwd_source=source),
+                             indent=1, default=str))
         else:
-            print(render(d, args.cwd, live=running(log.parent)))
+            if cwd:
+                print("target directory: %s (from %s)" % (cwd, source))
+            else:
+                print("target directory unknown — pass --cwd, or every path "
+                      "below will look foreign to it.")
+            print(render(d, cwd, live=running(log.parent)))
         return 0
     if args.command == "status":
         return do_status(Path(args.out).expanduser(), args.max_chars)
