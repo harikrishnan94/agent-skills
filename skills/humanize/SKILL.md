@@ -8,9 +8,10 @@ description: >-
   "reviewers keep flagging generated code", or "clean this up before I open the
   PR". Applied to an existing diff it fixes the code by default and reports what
   changed. Removes narration comments, theatrical error handling, padding, and
-  generated-looking collateral; adds the edge-case handling generated code tends
-  to miss. Improves quality — never hides AI involvement where a project
-  requires disclosure.
+  generated-looking collateral; keeps the comments, commit message and PR text
+  in plain sentences; adds the edge-case handling generated code tends to miss.
+  Improves quality — never hides AI involvement where a project requires
+  disclosure.
 ---
 
 # Humanize: meet the reviewer's bar
@@ -25,7 +26,7 @@ quality work, not camouflage. Two things this skill is not:
 - **Not manufactured messiness.** Never inject typos, irregular formatting, or
   deliberate imperfections to "look human" — tools that do this produce worse
   code, and reviewers spot the fake as fast as the tell. A careful author's
-  signature is minimality, not mess.
+  work is minimal, not messy.
 
 ## Two modes
 
@@ -42,17 +43,17 @@ untouched code is itself a tell.
 
 **The guardrail governing both modes:** never delete a guard, a comment, or a
 branch solely because it looks generated. Verify it is actually dead or
-redundant — read the caller, the type, the test — before removing it.
-Reflexively stripped defensive clauses have caused production failures. If you
-cannot verify, leave it and say so. And when a comment is bad, prefer rewriting
-it into a true, useful one over deleting it.
+redundant — read the caller, the type, the test — before removing it. Guards
+deleted on reflex have broken production before. If you cannot verify, leave it
+and say so. And when a comment is bad, prefer rewriting it into a true, useful
+one over deleting it.
 
 ## Read the neighbors first
 
 Before writing or judging anything, read the surrounding code: naming style
 (including terse abbreviations), error-handling idiom, comment density, test
-structure, file organization. The repo's dialect outranks every default below —
-each rule phrased as a threshold bends to what the codebase actually does.
+structure, file organization. The repo's own style beats every default below.
+Where a rule here gives a number, the codebase's actual habit wins.
 
 **Reuse before write.** Before adding a helper, search for existing code that
 already does the job — grep for the operation, check what the neighboring
@@ -61,9 +62,11 @@ strongest tells, and a maintenance bug regardless.
 
 ## Comments: the loudest tell
 
-A comment exists to carry what the code cannot: intent, an invariant, a hazard,
-a non-obvious consequence. Exceptions where a *what* comment is right: regexes,
-bit tricks, dense algorithms.
+Comments explain *why*, never *what*. A comment carries only what is
+non-obvious from the surrounding code: intent, an invariant, a hazard, a
+consequence the reader cannot see from here, the meaning of a dense regex or
+bit trick. Add one only when it materially helps a reviewer or reader grasp the
+code. When in doubt, do not add it — and cut the one already there.
 
 - Never narrate the next line. If the comment shares its words with the code it
   says nothing — carry a different fact or delete it. Write for a reader who
@@ -77,6 +80,10 @@ bit tricks, dense algorithms.
   ownerless TODOs (use `TODO(name)` where the repo does).
 - All of this applies to test files with full force — test code is where
   generated comment style lingers longest.
+
+Cut a comment because it restates the code, not because you cannot follow it.
+Where you cannot tell whether its fact is real, the guardrail wins: keep it and
+say so.
 
 Before:
 
@@ -100,6 +107,48 @@ for user in users:
 ```
 
 One comment survived — the one carrying a fact the code cannot say.
+
+## Plain sentences
+
+Every piece of prose the change carries — comments, docstrings, the commit
+message, the PR text, and the fix-mode report — gets read by people who did not
+write it, and often by people who do not read English as a first language. A
+sentence a reader has to parse twice is the same defect as a narration comment:
+the writer saved effort and charged the reader for it.
+
+- One idea per sentence: 20 words where you are telling the reader to do
+  something, 25 where you are describing.
+- Keep each word next to the word it depends on. Difficulty comes from that
+  distance, not from length — never split a subject from its verb with a
+  clause. A long, straight sentence is fine.
+- Start with what the reader knows and end on the new point, as a main clause.
+  A point trailing in `..., which is what ...` sits in the sentence's weakest
+  spot; cut it loose and make it the next sentence.
+- No noun stack longer than three words. Name the actor and use the active
+  voice.
+- Say what the thing is, not the project's private name for it. Keep a term
+  only when it is the field's shared name and no ordinary words replace it.
+- Plain is not shorter and never vaguer. Simplify the sentence, never the
+  content — a good rewrite is often longer.
+
+Before:
+
+```text
+// The value returned by the lookup is used by two consumers that both mutate
+// it, which is the reason we hand back a copy here rather than the cached
+// object itself.
+```
+
+After:
+
+```text
+// Both callers mutate what they get, so hand back a copy.
+// The cached object has to stay clean.
+```
+
+For prose outside the change — a Slack message, a mail, a review reply — use
+the `plain-prose` skill where it is installed. It carries the full rules, the
+per-rule tests, and the research the numbers come from.
 
 ## Robustness: guard what's real, drop the theater
 
@@ -144,12 +193,12 @@ def load_cfg(path):
     return cfg
 ```
 
-The blanket catch hid real failures; the case that genuinely occurs (a config
-without the optional section) is now handled explicitly.
+The blanket catch hid real failures. The case that does occur — a config
+without the optional section — is now handled directly.
 
-In fix mode, an added guard is a behavior change: apply it, but list it in its
-own section of the report so behavior deltas are visible separately from
-style fixes.
+In fix mode, an added guard is a behavior change. Apply it, but list it in its
+own section of the report, so the reader sees behavior changes apart from style
+fixes.
 
 ## Every line must earn its place
 
@@ -197,7 +246,7 @@ where it fails.
 - Run the changed path, not just the compiler or the test suite.
 - Confirm every API you call exists in the version this project actually pins —
   open the dependency's source or docs; memory is not a source.
-- Unexercised output is below the bar by definition.
+- Code you have not run does not meet the bar.
 
 ## Commits, PR text, and the disclosure gate
 
@@ -227,12 +276,13 @@ This skill governs quality; it never conceals provenance.
 Re-read the full diff as a reviewer who did not write it and has rejected
 generated code before, asking of each hunk: *what here would make me suspect
 this diff, and is it justified?* Where the host supports it, prefer a genuinely
-fresh pass — a new session or a second reviewer — because the author's own
-context defends its choices rather than cutting them.
+fresh pass — a new session or a second reviewer. The session that wrote the
+code defends its own choices instead of cutting them.
 
 The closing checklist:
 
-- every comment carries a fact the code cannot
+- every surviving comment explains a why the code cannot show
+- prose reads as short, one-idea sentences in ordinary words
 - guards are real in both directions: theater gone, actual edge cases covered
 - every called API verified against the pinned version
 - untouched lines untouched
