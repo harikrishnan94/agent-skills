@@ -11,20 +11,30 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-import tempfile
 import time
 from urllib.parse import urlsplit
-import uuid
 
 
-TERMINAL_CONCLUSIONS = {
-    "success", "failure", "neutral", "cancelled", "skipped", "timed_out",
-    "action_required", "stale", "startup_failure",
-}
+SCHEMA = 2
+PASSING_CONCLUSIONS = {"success", "skipped", "neutral"}
+LEVELS = {"checks": "job", "workflows": "run", "statuses": "status"}
+MERGEABILITY_POLLS = 5
+MERGEABILITY_WAIT = 2
+LOCK_WAIT = 60
+MAX_CONSECUTIVE_ERRORS = 5
+MAX_BACKOFF = 900
 
 
 class ObservationChanged(ValueError):
-    """PR metadata moved while its sources were being collected."""
+    """The PR or a paginated listing moved while it was being read."""
+
+
+class ObserverBusy(Exception):
+    """Another watcher owns this state directory."""
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
 
 
 def github(host, endpoint, paginate=False):
@@ -46,7 +56,7 @@ def paginated(host, endpoint, key=None):
             raise ValueError(f"Expected an array: {endpoint}")
         rows.extend(items)
     if key and "total_count" in pages[0] and len(rows) != pages[0]["total_count"]:
-        raise ValueError(f"Incomplete or changing pagination: {endpoint}")
+        raise ObservationChanged(f"Listing changed while paginating: {endpoint}")
     return sorted(rows, key=lambda row: row["id"])
 
 
@@ -69,6 +79,21 @@ def pr_metadata(pr):
     return data
 
 
+def identity(pr):
+    """The fields that decide what an observation collects."""
+    return pr["state"], pr["head"]["sha"]
+
+
+def settled_pr(host, endpoint):
+    """GitHub computes mergeability lazily; the first read of a cold PR says null."""
+    for _ in range(MERGEABILITY_POLLS - 1):
+        pr = pr_metadata(github(host, endpoint))
+        if pr["state"] != "open" or pr["mergeable"] is not None:
+            return pr
+        time.sleep(MERGEABILITY_WAIT)
+    return pr_metadata(github(host, endpoint))
+
+
 def observe(pr_url):
     url = urlsplit(pr_url)
     match = re.fullmatch(r"/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)/?", url.path)
@@ -81,22 +106,22 @@ def observe(pr_url):
     host = url.hostname
     root = f"repos/{owner}/{repo}"
     endpoint = f"{root}/pulls/{number}"
-    pr = pr_metadata(github(host, endpoint))
-    sources = {"pr": pr}
-    if pr["state"] == "open":
-        sources["discussion"] = paginated(host, f"{root}/issues/{number}/comments?per_page=100")
-        sources["review_comments"] = paginated(host, f"{endpoint}/comments?per_page=100")
-        sources["reviews"] = paginated(host, f"{endpoint}/reviews?per_page=100")
-        revisions = {pr["head"]["sha"], pr["test_merge_sha"]} - {None}
-        for sha in sorted(revisions):
-            sources[f"checks:{sha}"] = paginated(
-                host, f"{root}/commits/{sha}/check-runs?filter=latest&per_page=100", "check_runs")
-            sources[f"statuses:{sha}"] = paginated(
-                host, f"{root}/commits/{sha}/status?per_page=100", "statuses")
-            sources[f"workflows:{sha}"] = paginated(
-                host, f"{root}/actions/runs?head_sha={sha}&per_page=100", "workflow_runs")
-    if pr_metadata(github(host, endpoint)) != pr:
-        raise ObservationChanged("PR changed during collection; repeat the observation")
+    pr = settled_pr(host, endpoint)
+    head = pr["head"]["sha"]
+    # CI attaches to the head commit; GitHub's test-merge commit never carries any.
+    sources = {
+        "pr": pr,
+        "discussion": paginated(host, f"{root}/issues/{number}/comments?per_page=100"),
+        "review_comments": paginated(host, f"{endpoint}/comments?per_page=100"),
+        "reviews": paginated(host, f"{endpoint}/reviews?per_page=100"),
+        f"checks:{head}": paginated(
+            host, f"{root}/commits/{head}/check-runs?filter=latest&per_page=100", "check_runs"),
+        f"statuses:{head}": paginated(host, f"{root}/commits/{head}/status?per_page=100", "statuses"),
+        f"workflows:{head}": paginated(
+            host, f"{root}/actions/runs?head_sha={head}&per_page=100", "workflow_runs"),
+    }
+    if identity(pr_metadata(github(host, endpoint))) != identity(pr):
+        raise ObservationChanged("PR head or state changed during collection; repeat the observation")
     return sources
 
 
@@ -112,30 +137,59 @@ def observe_settled(pr_url, attempts=3):
 
 def summarize(sources):
     pr = sources["pr"]
-    terminal = []
-    failures = []
-    for source, rows in sources.items():
+    rows = []
+    for source, items in sources.items():
         kind = source.split(":", 1)[0]
-        if kind not in ("checks", "statuses", "workflows"):
+        if kind not in LEVELS:
             continue
-        for row in rows:
+        for row in items:
             if kind == "statuses":
-                outcome = row["state"]
-                terminal.append(outcome in {"success", "failure", "error"})
-                failed = outcome in {"failure", "error"}
+                outcome, completed = row["state"], row["state"] != "pending"
                 name, link = row["context"], row["target_url"]
             else:
                 outcome = row["conclusion"]
-                terminal.append(row["status"] == "completed" and outcome in TERMINAL_CONCLUSIONS)
-                failed = outcome in TERMINAL_CONCLUSIONS - {"success", "skipped", "neutral"}
+                completed = row["status"] == "completed" and outcome is not None
                 name, link = row["name"], row["html_url"]
-            if failed:
-                failures.append({"source": source, "id": row["id"], "name": name,
-                                 "outcome": outcome, "url": link})
+            rows.append({"source": source, "level": LEVELS[kind], "id": row["id"], "name": name,
+                         "outcome": outcome, "url": link, "completed": completed})
+    if any(row["level"] == "job" for row in rows):
+        # A workflow run only aggregates its jobs, and those are already check runs.
+        rows = [row for row in rows if row["level"] != "run"]
+    terminal = bool(rows) and all(row["completed"] for row in rows)
+    finished = [{key: value for key, value in row.items() if key != "completed"}
+                for row in rows if row["completed"]]
     return {"state": pr["state"], "merged": pr["merged"], "head": pr["head"]["sha"],
             "base": pr["base"]["sha"], "mergeable": pr["mergeable"],
-            "mergeable_state": pr["mergeable_state"], "github_ci_rows": len(terminal),
-            "github_ci_terminal": bool(terminal) and all(terminal), "failures": failures}
+            "mergeable_state": pr["mergeable_state"], "github_ci_rows": len(rows),
+            "github_ci_terminal": terminal,
+            "failures": [row for row in finished
+                         if row["outcome"] not in PASSING_CONCLUSIONS | {"action_required"}],
+            "action_required": [row for row in finished if row["outcome"] == "action_required"]}
+
+
+def durable(handle, text):
+    handle.write(text)
+    handle.flush()
+    os.fsync(handle.fileno())
+
+
+def write_once(path, text):
+    """Content-addressed: a file that already exists holds exactly these bytes."""
+    if not path.exists():
+        with path.open("x") as output:
+            durable(output, text)
+
+
+def append_event(state_dir, event):
+    with (state_dir / "events.jsonl").open("a") as output:
+        durable(output, json.dumps(event) + "\n")
+
+
+def replace_json(path, value):
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("w") as output:
+        durable(output, json.dumps(value, indent=2) + "\n")
+    temporary.replace(path)
 
 
 def record(state_dir, sources):
@@ -143,49 +197,46 @@ def record(state_dir, sources):
     latest_path = state_dir / "latest.json"
     previous = json.loads(latest_path.read_text()) if latest_path.exists() else None
     pr_url = sources["pr"]["html_url"]
-    if previous and (previous["schema"] != 1 or previous["pr_url"] != pr_url):
+    if previous and (previous["schema"] != SCHEMA or previous["pr_url"] != pr_url):
         raise ValueError("State directory belongs to a different PR or schema")
-    hashes = {key: hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
-              for key, value in sources.items()}
+    blobs = {key: json.dumps(value, sort_keys=True, separators=(",", ":"))
+             for key, value in sources.items()}
+    hashes = {key: hashlib.sha256(blob.encode()).hexdigest() for key, blob in blobs.items()}
     previous_hashes = previous["source_hashes"] if previous else {}
     changed = sorted(key for key in hashes.keys() | previous_hashes.keys()
                      if hashes.get(key) != previous_hashes.get(key))
-    observed_at = datetime.now(timezone.utc).isoformat()
+    # The same content always gets the same id, so a replayed event is recognizable.
+    snapshot_id = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
+    observed_at = now()
+    blob_dir = state_dir / "sources"
+    blob_dir.mkdir(exist_ok=True)
+    for key, digest in hashes.items():
+        write_once(blob_dir / f"{digest}.json", blobs[key] + "\n")
     if changed:
-        snapshot_id = uuid.uuid4().hex
-        snapshot_dir = state_dir / "snapshots"
-        snapshot_dir.mkdir(exist_ok=True)
-        snapshot_path = snapshot_dir / f"{snapshot_id}.json"
-        with snapshot_path.open("x") as output:
-            json.dump({"observed_at": observed_at, "sources": sources}, output, indent=2)
-            output.write("\n")
-            output.flush()
-            os.fsync(output.fileno())
-        event = {"observed_at": observed_at, "snapshot_id": snapshot_id,
-                 "changed": changed, "snapshot": str(snapshot_path)}
         # Persist the event before advancing the cursor; interruption may replay, never erase it.
-        with (state_dir / "events.jsonl").open("a") as output:
-            output.write(json.dumps(event) + "\n")
-            output.flush()
-            os.fsync(output.fileno())
-    else:
-        snapshot_id = previous["snapshot_id"]
-        snapshot_path = state_dir / "snapshots" / f"{snapshot_id}.json"
-    latest = {"schema": 1, "pr_url": pr_url, "observed_at": observed_at,
-              "snapshot_id": snapshot_id, "source_hashes": hashes}
-    with tempfile.NamedTemporaryFile(mode="w", dir=state_dir, delete=False) as output:
-        temporary_path = Path(output.name)
-        try:
-            json.dump(latest, output, indent=2)
-            output.write("\n")
-            output.flush()
-            os.fsync(output.fileno())
-            temporary_path.replace(latest_path)
-        finally:
-            temporary_path.unlink(missing_ok=True)
+        append_event(state_dir, {"event": "changed", "observed_at": observed_at,
+                                 "snapshot_id": snapshot_id, "changed": changed, "sources": hashes})
+    replace_json(latest_path, {"schema": SCHEMA, "pr_url": pr_url, "observed_at": observed_at,
+                               "snapshot_id": snapshot_id, "source_hashes": hashes})
     return {"event": "changed" if changed else "unchanged", "changed": changed,
-            "snapshot_id": snapshot_id, "snapshot": str(snapshot_path),
+            "snapshot_id": snapshot_id,
+            "sources": {key: str(blob_dir / f"{digest}.json") for key, digest in hashes.items()},
             **summary}
+
+
+def acquire(lock):
+    """A one-shot read may overlap a watcher's poll; wait for it, then give up."""
+    for _ in range(LOCK_WAIT):
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            time.sleep(1)
+    raise ObserverBusy(lock.name)
+
+
+def describe(error):
+    return error.stderr if isinstance(error, subprocess.CalledProcessError) else str(error)
 
 
 def main():
@@ -199,10 +250,34 @@ def main():
         parser.error("--interval must be positive")
     state_dir = args.state_dir.resolve()
     state_dir.mkdir(parents=True, exist_ok=True)
-    with (state_dir / "observer.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    consecutive_errors = 0
+    with (state_dir / "observer.lock").open("a") as lock, \
+            (state_dir / "watch.lock").open("a") as watch_lock:
+        if args.watch:
+            try:
+                fcntl.flock(watch_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise ObserverBusy(watch_lock.name) from None
         while True:
-            result = record(state_dir, observe_settled(args.pr_url))
+            acquire(lock)
+            try:
+                result = record(state_dir, observe_settled(args.pr_url))
+            except (subprocess.SubprocessError, ObservationChanged) as error:
+                if not args.watch:
+                    raise
+                consecutive_errors += 1
+                event = {"event": "observation_error", "observed_at": now(), "error": describe(error)}
+                append_event(state_dir, event)
+                print(json.dumps(event), file=sys.stderr, flush=True)
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                    raise
+                result = None
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+            if result is None:
+                time.sleep(min(args.interval * consecutive_errors, MAX_BACKOFF))
+                continue
+            consecutive_errors = 0
             if result["event"] == "changed" or not args.watch:
                 print(json.dumps(result), flush=True)
             if not args.watch or result["state"] == "closed":
@@ -213,7 +288,9 @@ def main():
 if __name__ == "__main__":
     try:
         main()
+    except ObserverBusy as error:
+        print(json.dumps({"event": "observer_busy", "lock": str(error)}), file=sys.stderr)
+        sys.exit(3)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
-        detail = error.stderr if isinstance(error, subprocess.CalledProcessError) else str(error)
-        print(json.dumps({"event": "observation_error", "error": detail}), file=sys.stderr)
+        print(json.dumps({"event": "observation_error", "error": describe(error)}), file=sys.stderr)
         sys.exit(1)

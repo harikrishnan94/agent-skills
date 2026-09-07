@@ -55,8 +55,11 @@ result is uncertain, inspect the destination before retrying.
 ## State that travels with the PR
 
 Keep a directory under the main checkout's conventional scratch location, normally
-`tmp/pr-watch/<host>/<owner>/<repo>/<number>`. Keep it out of commits and record its
-absolute path in the agent's required working-state file.
+`tmp/pr-watch/<host>/<owner>/<repo>/<number>`. Keep it out of commits. Record its
+absolute path in the launch prompt or handoff note, and also in the agent-memory
+working-state file when the host has one: the `state.md` that the agent-memory
+hooks inject at session start. A host without those hooks has no such file, so
+`STATE.md` below and the handoff note are then the only pointers to this directory.
 
 Maintain one current `STATE.md` with:
 
@@ -69,8 +72,9 @@ Maintain one current `STATE.md` with:
 Rewrite stale sections after each completed step. Retain raw logs and observations
 separately. Do not turn `STATE.md` into an accumulating transcript.
 
-On resume, first read the host's required working-state file, then reconcile this
-handoff with live state. Do not inherit shell variables or assume a monitor survived.
+On resume, first read the agent-memory working-state file if the host provides
+one, then this directory's `STATE.md`, then reconcile the handoff with live state.
+Do not inherit shell variables or assume a monitor survived.
 Before transferring ownership, checkpoint pending work and release the prior owner.
 The new owner must verify live state and restart observation before making changes.
 
@@ -93,7 +97,8 @@ classifications when the revision, run attempt, failure signature, or relevant c
 Run the observer in the host's supported monitor or external runner and record its
 lifetime. The script cannot wake an agent after that host terminates it. Emit user
 notifications only for actionable changes, completion, failure, or required decisions.
-Record API errors and re-establish observation; never remain silently blind.
+The observer logs transient API errors to its `events.jsonl` and keeps polling; if
+it exits, re-establish observation. Never remain silently blind.
 While external CI is still running, revisit its reports even if GitHub metadata is unchanged.
 
 ## Analyze and repair a round
@@ -120,11 +125,28 @@ A defective assertion can be repaired only with evidence for the correct invaria
 and a check that the replacement still detects the behavior it is intended to test.
 Surface material design changes for a decision while continuing independent work.
 
-Before committing, run the repository's style checks and these sibling skills:
-[humanize](../humanize/SKILL.md), [plain-prose](../plain-prose/SKILL.md), and
-[reduce-complexity](../reduce-complexity/SKILL.md). Resolve their paths from this
-skill's real location, not the caller's working directory. An unavailable required
-pass remains unmet unless the user has accepted equivalent instructions.
+### Resolve a conflict
+
+When the observation reports `mergeable: false` (`mergeable_state: dirty`), merge
+the base branch into the PR branch as a new merge commit; never rebase. Resolve
+each conflict so that both the PR's intent and the base change survive, rebuild,
+and rerun the tests the conflicting files affect. Record the merge as a deliberate
+base merge and observe the merged head as a new revision. This needs the
+authorization to merge the base described above; when it is missing, prepare and
+verify the resolution first, then request it.
+
+### Quality passes before committing
+
+Run the repository's style checks, then the humanize, plain-prose, and
+reduce-complexity skills on the fix's own staged diff only. Both humanize and
+reduce-complexity edit the whole branch diff by default, so scope them to the fix's
+hunks and treat anything they report about the PR author's existing code as
+report-only. Invoke them by name through the host's skill mechanism. If the host
+cannot load one, use the copy beside this skill, [humanize](../humanize/SKILL.md),
+[plain-prose](../plain-prose/SKILL.md), or
+[reduce-complexity](../reduce-complexity/SKILL.md), resolved from this skill's real
+location rather than the caller's working directory. An unavailable pass remains
+unmet unless the user has accepted equivalent instructions.
 
 A verifier must independently check fixes and final failure classifications,
 including rounds with no patch. It must not have produced the artifact or
