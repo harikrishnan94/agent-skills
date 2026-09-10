@@ -1,32 +1,33 @@
 ---
 name: humanize
 description: >-
-  Hold generated code to the bar a careful human author meets before a reviewer
-  sees it. Use whenever writing or modifying code a human will review — a PR, a
+  Reduce unnecessary code and comment lines so reviewers can understand and
+  verify a change without the author's agent history. Use whenever writing or
+  modifying code a human will review — a PR, a
   patch, a commit on a shared branch — and when cleaning up an existing diff on
   explicit cues like "humanize this", "this looks AI-generated", "AI slop",
   "reviewers keep flagging generated code", or "clean this up before I open the
   PR". Applied to an existing diff it fixes the code by default and reports what
-  changed. Removes narration comments, theatrical error handling, padding, and
-  generated-looking collateral; keeps the comments, commit message and PR text
-  in plain sentences; adds the edge-case handling generated code tends to miss.
-  Improves quality — never hides AI involvement where a project requires
-  disclosure.
+  changed. Removes verbose comments, planning leftovers, unexplained labels,
+  and redundant code while preserving behavior and useful rationale. Keeps
+  comments, commit messages and PR text in plain sentences. Honors required
+  AI disclosure.
 ---
 
 # Humanize: meet the reviewer's bar
 
-Reviewers reject generated code for a predictable set of tells. Every one of
-them is a real defect — noise, padding, theater — so removing them is ordinary
-quality work, not camouflage. Two things this skill is not:
+Make the change understandable and verifiable by a reviewer who knows the
+language and relevant domain but has none of the author's prompt, plan, or
+conversation history. Reduce unnecessary code and comment lines. Preserve
+behavior, established terminology, and the facts needed to assess correctness.
 
-- **Not detection evasion.** Where a project requires AI disclosure, the
-  disclosure stays. The goal is a diff no reviewer has *reason* to flag, not a
-  diff that hides its origin.
-- **Not manufactured messiness.** Never inject typos, irregular formatting, or
-  deliberate imperfections to "look human" — tools that do this produce worse
-  code, and reviewers spot the fake as fast as the tell. A careful author's
-  work is minimal, not messy.
+The reviewer should find necessary context in the diff, repository, and change
+description. Put explanations needed for later maintenance near the relevant
+code or in its existing documentation. Remove the authoring story; retain
+verified constraints and decision reasons that still matter.
+
+Never hide required AI disclosure or introduce deliberate imperfections to
+make code look human. Clear code may need no changes.
 
 ## Two modes
 
@@ -38,58 +39,66 @@ simply the bar.
 diff"). Scope is the change set they name; when they don't, use the working
 tree plus the current branch's diff against its merge base with the integration
 branch, and ask if that's ambiguous. Fix the code directly, then report what
-changed. Never touch lines outside the change set — unsolicited reformatting of
-untouched code is itself a tell.
+changed. Preserve existing behavior, including failure behavior, unless the
+task authorizes a behavior change. Report newly found bugs separately when
+they are outside that scope. Keep cleanup within the named change; avoid
+unrelated reformatting or refactoring.
 
 **The guardrail governing both modes:** never delete a guard, a comment, or a
 branch solely because it looks generated. Verify it is actually dead or
-redundant — read the caller, the type, the test — before removing it. Guards
-deleted on reflex have broken production before. If you cannot verify, leave it
-and say so. And when a comment is bad, prefer rewriting it into a true, useful
-one over deleting it.
+redundant — read the caller, the type, the test — before removing it. If you
+cannot verify, leave it and say so. Delete a redundant comment without adding
+a replacement. When it carries a useful fact, preserve that fact in fewer
+words where possible. Never invent a rationale to justify keeping code.
 
 ## Read the neighbors first
 
 Before writing or judging anything, read the surrounding code: naming style
 (including terse abbreviations), error-handling idiom, comment density, test
-structure, file organization. The repo's own style beats every default below.
-Where a rule here gives a number, the codebase's actual habit wins.
+structure, file organization. Follow explicit project conventions, then the
+surrounding code. Where a rule here gives a number, treat it as a fallback;
+correctness and necessary explanations take priority.
 
 **Reuse before write.** Before adding a helper, search for existing code that
-already does the job — grep for the operation, check what the neighboring
-modules import. Reimplementing what the project already has is among the
-strongest tells, and a maintenance bug regardless.
+already does the job — search for the operation and check what the neighboring
+modules import.
 
-## Comments: the loudest tell
+## Fewer comment lines, with useful facts intact
 
-Comments explain *why*, never *what*. A comment carries only what is
-non-obvious from the surrounding code: intent, an invariant, a hazard, a
-consequence the reader cannot see from here, the meaning of a dense regex or
-bit trick. Add one only when it materially helps a reviewer or reader grasp the
-code. When in doubt, do not add it — and cut the one already there.
+Aim for fewer comment lines when cleaning a verbose diff and sparse comments
+when writing code. Zero new comments is a valid result. Each comment must add
+information the intended reader needs and cannot readily get from nearby code.
+Useful facts include intent, an invariant, a hazard, units, ownership, and a
+non-obvious consequence. Dense algorithms or regexes may need an explanation
+of what they do. API documentation must still describe its contract.
 
-- Never narrate the next line. If the comment shares its words with the code it
-  says nothing — carry a different fact or delete it. Write for a reader who
-  knows the language better than you do.
-- One comment per fact. Explaining the same thing at the declaration and again
-  at the use site is a tell.
-- Match the file's comment density. When the neighbors give no signal, stay
-  under roughly ten added comment lines per diff.
+- Remove narration of obvious operations, repeated explanations, and summaries
+  already expressed by a good name. Improve an unclear name or expression
+  before adding prose to explain it.
+- State a fact once, where readers need it. Compress wordy explanations while
+  preserving their conditions, exceptions, and technical meaning.
+- Match the file's comment density. When the neighbors give no signal, aim for
+  fewer than ten added comment lines per diff. This is a ceiling to question,
+  not an allowance to fill; necessary facts may justify exceeding it.
 - Banned outright: self-referential comments ("as requested", "updated to fix
   the issue"), placeholder comments ("implement as needed"), section banners,
   ownerless TODOs (use `TODO(name)` where the repo does).
-- All of this applies to test files with full force — test code is where
-  generated comment style lingers longest.
+- Apply the same restraint to tests, docstrings, and block comments. Do not
+  move narration into docstrings, a README, or PR text to reduce the count.
 
-Cut a comment because it restates the code, not because you cannot follow it.
-Where you cannot tell whether its fact is real, the guardrail wins: keep it and
-say so.
+Do not delete useful context to meet a count, or pack it into unreadably long
+lines. A comment increase needs a concrete explanation of what readers were
+missing. When an existing fact is unclear, investigate before cutting it.
+Verify factual claims in new or rewritten explanations against the code,
+tests, requirements, or documented constraints.
 
 Before:
 
 ```python
 # Loop through all the users and check each one
 for user in users:
+    # Suspended accounts retain their slot for 30 days.
+    # We must skip them here rather than evicting them.
     # Skip inactive users
     if not user.active:
         continue
@@ -100,13 +109,13 @@ After:
 
 ```python
 for user in users:
-    # suspended accounts keep their slot for 30 days, so skip, don't evict
+    # Suspended accounts keep their slot for 30 days; skip without evicting.
     if not user.active:
         continue
         ...
 ```
 
-One comment survived — the one carrying a fact the code cannot say.
+Four comment lines became one; the existing retention rule survived.
 
 ## Plain sentences
 
@@ -126,8 +135,8 @@ the writer saved effort and charged the reader for it.
   spot; cut it loose and make it the next sentence.
 - No noun stack longer than three words. Name the actor and use the active
   voice.
-- Say what the thing is, not the project's private name for it. Keep a term
-  only when it is the field's shared name and no ordinary words replace it.
+- Use the repository's established terminology and ordinary words. Check
+  unfamiliar terms as described under naming below.
 - Plain is not shorter and never vaguer. Simplify the sentence, never the
   content — a good rewrite is often longer.
 
@@ -143,72 +152,37 @@ After:
 
 ```text
 // Both callers mutate what they get, so hand back a copy.
-// The cached object has to stay clean.
 ```
 
 For prose outside the change — a Slack message, a mail, a review reply — use
 the `plain-prose` skill where it is installed. It carries the full rules, the
 per-rule tests, and the research the numbers come from.
 
-## Robustness: guard what's real, drop the theater
+## Preserve behavior while removing redundant code
 
-Generated code gets defensiveness backwards: elaborate handling for states that
-cannot occur, nothing for the edge cases that actually arrive. Fix both
-directions.
+Inspect broad exception handlers, retries, repeated validation, and fallback
+paths. Remove them only when their redundancy is established. A broad catch
+may implement a required fallback; changing a default return into an exception
+changes behavior even if the existing tests pass.
 
-**Delete** (subject to the guardrail above):
-
-- blanket try/catch that logs and continues, or swallows the error entirely
-- retries around operations that are not transient
-- checks for conditions the type system or the caller already guarantees
-- the same invariant re-validated at every layer
-
-**Add** — the checks generated code actually omits:
-
-- empty collections and boundary indices
-- null/absent values at real data boundaries: user input, file and network IO,
-  responses from external services
-- error propagation the caller genuinely needs
-
-Where you can, restructure so the error case cannot occur at all — a tighter
-interface beats a guard.
-
-Before:
-
-```python
-def load_cfg(path):
-    try:
-        return json.loads(read_file(path))
-    except Exception:
-        logger.error("config load failed")
-        return DEFAULT_CFG
-```
-
-After:
-
-```python
-def load_cfg(path):
-    cfg = json.loads(read_file(path))     # missing/invalid config must abort,
-    cfg.setdefault("timeouts", {})        # not silently run on defaults
-    return cfg
-```
-
-The blanket catch hid real failures. The case that does occur — a config
-without the optional section — is now handled directly.
-
-In fix mode, an added guard is a behavior change. Apply it, but list it in its
-own section of the report, so the reader sees behavior changes apart from style
-fixes.
+In write mode, handle real boundaries: empty collections, boundary indices,
+absent external input, and error propagation the caller needs. In fix mode,
+follow the task's behavior constraint. Do not add missing guards as a style
+cleanup. Where authorized, prefer a simpler interface that rules out the bad
+state; report any behavior change explicitly.
 
 ## Every line must earn its place
 
-Re-read the diff and delete anything the change works without:
+Re-read the diff against the final requirement. Look for remnants of abandoned
+approaches: unused helpers, experimental flags, duplicate paths, temporary
+adapters, obsolete test scaffolding, and comments that defend an earlier design.
+Check current callers, contracts, and tests before deciding they are obsolete.
+Remove only what has no current purpose in behavior, clarity, or validation:
 
 - dead branches, speculative parameters, config knobs, "for future use" hooks
-- wrapper types, forwarding functions, single-use abstractions — no new
-  abstraction until roughly three real call sites exist; duplication is cheaper
-  than the wrong abstraction
-- redundant else after return, logging no one will read
+- wrapper types and forwarding functions that add no useful boundary or meaning;
+  a single-use helper can still clarify an operation or isolate a real invariant
+- redundant else after return and diagnostics left over from development
 
 Prefer touching existing code over adding files; a short function over a class;
 an existing mechanism over a parallel one. Size each function to its job —
@@ -230,6 +204,17 @@ installed; this section stays at the line and function level.
 
 ## Shape and naming
 
+- Search unfamiliar names and terms in the code and documentation. Keep
+  established domain terms, repository concepts, and conventional abbreviations
+  when they are precise. A term is not wrong merely because you did not know it.
+- Replace labels whose meaning exists only in the prompt, plan, or conversation
+  with names describing their current role. For example, replace a planning
+  label such as "phase-two envelope" with the actual object or operation.
+  Documented protocol phases or compatibility versions may be real concepts;
+  check before renaming them.
+- When a necessary new concept has no established name, choose a descriptive
+  one and explain its contract once near its definition. Avoid a glossary or
+  extra prose for a label that can simply be replaced.
 - Names state what the thing is in the domain's terms — neither
   `total_user_input_character_count` nor `data2`. No meaning-free `Manager`,
   `Handler`, `Helper`, `Util`, `Service`, `Info`, `Processor` (unless the
@@ -243,10 +228,13 @@ Exercising the change is part of the bar. Generated code now looks idiomatic
 even when it is wrong, so reviewers escalate from style to logic — and logic is
 where it fails.
 
-- Run the changed path, not just the compiler or the test suite.
+- Exercise the affected behavior with checks appropriate to the change. When
+  removing guards or fallbacks, check those error paths too; a passing suite
+  alone does not prove that behavior stayed the same.
 - Confirm every API you call exists in the version this project actually pins —
   open the dependency's source or docs; memory is not a source.
-- Code you have not run does not meet the bar.
+- Report what ran and any limits. Do not create tests that merely enforce the
+  rewritten wording or mirror the implementation.
 
 ## Commits, PR text, and the disclosure gate
 
@@ -257,8 +245,8 @@ where it fails.
 - PR description: what the reviewer needs and why the change exists, in prose,
   under ~2,500 characters. No emoji, no header-and-bullet scaffolding on small
   changes, no politeness filler.
-- No unsolicited collateral: no new design-note or summary markdown, no README
-  or LICENSE edits nobody asked for. Files end with a newline.
+- No unsolicited design notes or summary files. Update existing documentation
+  only when needed for the authorized change. Files end with a newline.
 
 **The disclosure gate:** before writing trailers or PR text, check the
 project's contributing docs for an AI-contribution policy.
@@ -273,22 +261,31 @@ This skill governs quality; it never conceals provenance.
 
 ## Final review: fresh eyes
 
-Re-read the full diff as a reviewer who did not write it and has rejected
-generated code before, asking of each hunk: *what here would make me suspect
-this diff, and is it justified?* Where the host supports it, prefer a genuinely
-fresh pass — a new session or a second reviewer. The session that wrote the
-code defends its own choices instead of cutting them.
+Re-read the full diff with only the context available to a reviewer. Can you
+explain the behavior change, the reason for each non-obvious choice, and how to
+check correctness from the diff, repository, and change description?
+
+For substantial changes, use a fresh reviewer or subagent when available.
+Give it those artifacts without the authoring conversation or your expected
+explanation. Ask it to identify missing context and unexplained terminology.
+Repair concrete gaps; do not add commentary merely to anticipate every possible
+question. If you review it yourself, do not claim an independent check.
 
 The closing checklist:
 
-- every surviving comment explains a why the code cannot show
+- unnecessary comment lines removed; useful facts kept without repeated prose
+- every added construct serves the final implementation, not an abandoned plan
+- names and explanations make sense without the author's private context
 - prose reads as short, one-idea sentences in ordinary words
-- guards are real in both directions: theater gone, actual edge cases covered
+- behavior preserved, or authorized changes identified and verified
 - every called API verified against the pinned version
 - untouched lines untouched
 - collateral within bounds; no stray files
 - disclosure policy honored
 
-In fix mode, close with the report: what changed and why, grouped by tell;
-behavior-affecting additions listed separately; anything intentionally left
-(unverifiable guards, mandated trailers) with the reason.
+In fix mode, briefly report what changed and why, the checks run, and anything
+left unresolved. When comments changed, report comment lines before and after
+in the cleanup scope, including docstring and block-comment prose. Count text
+lines rather than delimiters alone; preserve required notices. Explain an
+increase by the missing information it supplies. List authorized behavior
+changes separately. Do not produce a separate report file unless requested.
