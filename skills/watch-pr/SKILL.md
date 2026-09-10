@@ -1,193 +1,156 @@
 ---
 name: watch-pr
-description: Watch a GitHub pull request through CI rounds, resolve conflicts, fix PR-caused failures, validate and push authorized changes, and preserve state for handoff to another agent. Use when asked to watch a PR, keep it healthy, or resume an existing PR watcher.
+description: Keep a GitHub PR green while preserving its motivation. Diagnose CI blockers, resolve merge conflicts and ClickHouse private sync, validate authorized fixes, and retain state for unattended watching or handoff.
 ---
 
 # Watch a pull request
 
-Keep the named PR healthy while preserving its design and test coverage. Work
-through observation, attribution, repair, and verification of the pushed revision.
+Preserve the PR's intended benefit and account for every applicable CI job.
+A diagnosed failure remains a blocker until recovered or explicitly handed off.
 
-## Establish the assignment
+## Assignment and intent
 
-Resolve the PR URL, live head and base, push repository/branch, and worktree.
-Never assume `origin` is upstream or that the current checkout contains this PR.
-Use an existing assigned worktree, or create an isolated one under repo conventions.
-Only one agent may modify a PR worktree; coordinate before taking over an active owner.
+Resolve live head/base, exact push repository/branch, and assigned worktree.
+Never assume `origin` is upstream. Isolate work when needed; only one repair
+owner may modify the worktree. Observer locks do not establish that ownership.
 
-Preserve the user's authorization across rounds and handoffs. A request to watch
-and fix a PR covers the work necessary to prepare the fixes. Honor any existing
-authorization to commit, push, or merge the base without asking again. Otherwise
-prepare and verify the exact change before requesting the missing authorization.
-Posting content, changing another repository, replacing/closing the PR, and merging
-the PR require authorization for those actions. The emoji rule below grants none.
+Carry existing authority for commits, pushes, base merges, reruns, and private
+sync repairs across rounds and handoffs. Prepare and verify a concrete action
+before asking for missing authority. Posting, changing another repository,
+replacing/closing the PR, and merging the PR need their own authority.
+Before drafting GitHub content, read [posting.md](references/posting.md).
 
-Default to stopping when the current revision is settled. Use continuous watching
-until closure or merger when requested. Record timezone, quiet hours, and any work
-pause separately: silence over a weekend does not itself suspend repair work.
-Apply an existing deadline or budget; do not invent a new one.
+Default to watching until the current revision is green or needs external action.
+Continuous mode watches until closure/merger. Honor existing budgets, deadlines,
+quiet hours, and pauses; silence does not itself pause repair work.
 
-For ClickHouse, read [references/clickhouse.md](references/clickhouse.md).
+Before editing, record intent from the author's description, linked issue,
+decisions, tests, and code: the problem, intended benefit, chosen approach and
+why it matters, behavior/compatibility/performance invariants, coverage, non-goals,
+and evidence distinguishing the benefit from pre-PR behavior. Retain this across
+repairs. Reconcile author changes explicitly; never rewrite intent to justify a
+fix. Investigate ambiguity, then request only the needed decision while
+continuing independent work.
 
-## Attribution on GitHub posts
+## Durable, economical observation
 
-**Prefix every GitHub post containing content not written by the user with exactly
-`🕵️ `, including the space.** This covers comments, inline reviews, replies, and
-PR/issue titles and bodies. Mark each independently posted item, not just the first
-item in a batch. This rule does not apply to commit messages.
+Keep evidence outside commits under the main checkout's scratch location,
+normally `tmp/pr-watch/<host>/<owner>/<repo>/<number>`. Record its absolute path
+in the handoff and host-provided agent-memory working-state file, when present.
+Maintain a compact `STATE.md`: assignment/authority, intent, owner/worktree,
+head/base/test-merge SHAs, expected CI, blocker signatures and evidence, fixes and
+validation, processed event, monitor lifetime, and exact next action. Rewrite
+current state; retain raw logs separately.
 
-- Generated, summarized, translated, polished, and mixed user/agent text need the prefix.
-- User approval of an agent-written draft does not make it user-authored. Keep the prefix.
-- Only text written by the user and posted verbatim is exempt. Supplying text
-  does not itself establish authorship. Use the prefix when authorship is uncertain.
-- For attachments or other non-text output, mark the accompanying title, caption,
-  or message with `🕵️ `.
-- Editing an existing item with agent-written text requires the prefix on that item.
-  Preserve its history and meaning. Do not rewrite unrelated historical posts.
-- Keep an existing `🕵️ ` prefix once. Do not substitute a different detective emoji.
-- This explicit user convention overrides generic style guidance against emoji.
+Use the bundled [observer](references/observer.md). Poll without an LLM turn per
+poll. Before unattended watching, verify the host's wakeup/restart mechanism
+handles events, process exit, and stale observation. Record who checks
+`latest.json.observed_at` and when it next runs. A subprocess cannot wake an
+agent or restart itself. If no durable runner exists, disclose that limit and
+leave a concrete continuation; never claim unattended watching is active.
 
-Prepare the exact payload, including its prefix, before any required approval.
-Immediately before posting, check authorization, destination, authorship, and prefix.
-Keep a posted item's URL/ID in state to avoid duplicate replies on resume. If a write's
-result is uncertain, inspect the destination before retrying.
+Read compact summaries and changed sources first. Fetch full logs only for new
+or changed failures. Reuse classifications while intent, exercised code,
+configuration, revision applicability, and signature remain valid. A new attempt
+needs fresh results, not automatic reanalysis of the PR. Delegate only substantial
+new attribution/log work with bounded evidence; request cause, fix, validation,
+and paths. Do not spawn agents or repeat quality passes on unchanged polls.
 
-## State that travels with the PR
+Observe revisions, mergeability, checks, statuses, workflows, and edited bot/review
+reports. Revisit pending external reports at a recorded cadence even without
+GitHub changes. Notify only for actionable changes, completion, monitor failure,
+or required decisions. On resume, read host working state then `STATE.md`,
+reconcile live state, verify evidence, and restart observation. Checkpoint and
+release the old repair owner before transferring ownership.
 
-Keep a directory under the main checkout's conventional scratch location, normally
-`tmp/pr-watch/<host>/<owner>/<repo>/<number>`. Keep it out of commits. Record its
-absolute path in the launch prompt or handoff note, and also in the agent-memory
-working-state file when the host has one: the `state.md` that the agent-memory
-hooks inject at session start. A host without those hooks has no such file, so
-`STATE.md` below and the handoff note are then the only pointers to this directory.
+## Account for every blocker
 
-Maintain one current `STATE.md` with:
+For ClickHouse, read [clickhouse.md](references/clickhouse.md).
 
-- Assignment, permissions, owner, worktree, push target, stop condition, and schedule.
-- Head/base SHAs, current round/phase, and the latest observation processed.
-- Findings by signature: classification, affected revision/run attempt, evidence,
-  fix commit, and outstanding verification. Include unresolved review requests.
-- Owned processes, monitor lifetime, posted-item IDs, and the exact next action.
+Establish expected CI from effective branch rules, workflow/CI plans, changed
+paths, and provider reports. Track required checks separately from other applicable
+jobs. Persist GitHub expectations in the observer's `requirements.json`; refresh
+for revision/configuration/rule changes. Inspect review-thread resolution and
+other merge requirements through the provider API. Missing access or coverage
+remains unknown. Reconcile expected and observed jobs before completion.
 
-Rewrite stale sections after each completed step. Retain raw logs and observations
-separately. Do not turn `STATE.md` into an accumulating transcript.
+Each blocker needs revision/run attempt, signature, evidence, cause, next action,
+and verification. Follow [blocker actions](references/observer.md#blocker-actions)
+for missing, pending, skipped, cancelled, approval, and infrastructure states.
+Never suppress entire checks such as `CH Inc sync`.
 
-On resume, first read the agent-memory working-state file if the host provides
-one, then this directory's `STATE.md`, then reconcile the handoff with live state.
-Do not inherit shell variables or assume a monitor survived.
-Before transferring ownership, checkpoint pending work and release the prior owner.
-The new owner must verify live state and restart observation before making changes.
+Compare the exact failure against the target branch in the same configuration.
+A matching test name, flake history, timeout, or disjoint changed files does not
+establish causation. Keep uncertain attribution `UNSETTLED`. Unrelated defects
+need no speculative patch in this PR, but still need authorized CI recovery or an
+explicit external blocker with an owner/next action.
 
-## Observe every blocking signal
+Before rerunning, record why retry can help and which attempt it replaces. Retry
+the smallest affected scope and inspect its result before another retry. Repeated
+identical failure without new evidence requires diagnosis or escalation, not
+retries until green. Inspect uncertain mutation results before retrying.
 
-Use the bundled observer; read [references/observer.md](references/observer.md) for
-its commands, outputs, and limits. It only reads GitHub and writes local evidence.
+## Repair while preserving intent
 
-Observe lifecycle, head/base movement, mergeability, checks, commit statuses,
-workflow runs, and discussion/review comments, including edited bot reports.
-Read linked CI reports too: a GitHub status may summarize hundreds of external jobs.
-Inspect unresolved review threads through the provider's API before claiming review
-coverage; a list of comments does not establish their resolution status.
+Before editing, record cause, reproduction, expected result, and affected intent
+invariants. Make the smallest adequate fix. Demonstrate both that the failure is
+repaired and the original benefit survives. For performance changes, verify the
+changed path executes and use valid benchmark controls; correctness alone is
+insufficient. Never obtain green CI by reverting/bypassing the intended change,
+disabling coverage, loosening limits, or weakening assertions. Repair a defective
+assertion only with evidence for the correct invariant and a check that still
+catches the defect. Escalate unavoidable design tradeoffs, continuing independent work.
 
-Keep observations separate from repair decisions. Empty checks, API failures,
-`UNKNOWN` mergeability, and a successful observer exit are not evidence of success.
-Do not suppress entire checks such as `CH Inc sync`. Revalidate specific prior
-classifications when the revision, run attempt, failure signature, or relevant code changes.
+Match the failing architecture, sanitizer, and configuration. Record unavailable
+local checks and require matching CI results; compilation alone is insufficient.
 
-Run the observer in the host's supported monitor or external runner and record its
-lifetime. The script cannot wake an agent after that host terminates it. Emit user
-notifications only for actionable changes, completion, failure, or required decisions.
-The observer logs transient API errors to its `events.jsonl` and keeps polling; if
-it exits, re-establish observation. Never remain silently blind.
-While external CI is still running, revisit its reports even if GitHub metadata is unchanged.
+For conflicts, merge the freshly fetched target base as a new merge commit; never
+rebase. Pin the common ancestor and both parents. Establish each side's intent
+and record how the resolution preserves both; never choose `ours`/`theirs`
+wholesale. Handle rename/delete, generated files, and submodules explicitly.
+Review interacting cleanly merged files too. Check for unmerged entries and
+conflict markers, rebuild affected targets, and test combined behavior plus the
+original benefit. Apply these semantic checks to clean base updates required by
+CI too. Reconfirm head/base and invalidate affected evidence after concurrent changes.
 
-## Analyze and repair a round
+## Validate and publish
 
-Use a fresh analysis subagent for each round requiring attribution. Give it the PR
-intent, pinned revisions, failure inventory, logs, and scope. Require a compact
-finding per failure: signature, classification, evidence, proposed fix, and exact
-validation commands. Keep build/test output in log files and delegate verbose log
-analysis. Follow any stricter repository requirements.
+On the fix's own diff, apply repository style plus humanize, plain-prose, and
+reduce-complexity. Load these skills once and scope edits to the fix's hunks;
+report unrelated author-code findings without editing. If the host cannot load
+them, use their sibling directories beside this skill. An unavailable required
+pass remains unmet unless the user accepts equivalent instructions.
 
-For each finding, first ask whether the same failure is also true on the target
-branch (`master` in ClickHouse). Check the actual signature, exercised code, and
-configuration. A matching test name or historical flake rate is insufficient.
-Record unrelated failures with evidence and skip their repair. Mark unresolved
-attribution `UNSETTLED`; do not convert uncertainty into an exemption.
+After all editing passes, validate the final tree. Record commands, configuration,
+results, log paths, and tested tree/commit; further edits invalidate affected
+checks. An independent verifier must check fixes, intent preservation, and final
+failure dispositions it did not produce. Reuse its verdict only for unchanged
+evidence/scope. Report an unavailable independent check as an unmet gate.
 
-Before editing, record the suspected cause, reproduction command, and expected
-result. Reproduce before and after when possible; run relevant regression checks.
-Compilation alone does not prove a behavioral fix. If the needed architecture or
-sanitizer is unavailable locally, record that gap and require the matching CI result.
-
-Preserve the PR's design and motivation. Do not weaken tests to obtain green CI.
-A defective assertion can be repaired only with evidence for the correct invariant
-and a check that the replacement still detects the behavior it is intended to test.
-Surface material design changes for a decision while continuing independent work.
-
-### Resolve a conflict
-
-When the observation reports `mergeable: false` (`mergeable_state: dirty`), merge
-the base branch into the PR branch as a new merge commit; never rebase. Resolve
-each conflict so that both the PR's intent and the base change survive, rebuild,
-and rerun the tests the conflicting files affect. Record the merge as a deliberate
-base merge and observe the merged head as a new revision. This needs the
-authorization to merge the base described above; when it is missing, prepare and
-verify the resolution first, then request it.
-
-### Quality passes before committing
-
-Run the repository's style checks, then the humanize, plain-prose, and
-reduce-complexity skills on the fix's own staged diff only. Both humanize and
-reduce-complexity edit the whole branch diff by default, so scope them to the fix's
-hunks and treat anything they report about the PR author's existing code as
-report-only. Invoke them by name through the host's skill mechanism. If the host
-cannot load one, use the copy beside this skill, [humanize](../humanize/SKILL.md),
-[plain-prose](../plain-prose/SKILL.md), or
-[reduce-complexity](../reduce-complexity/SKILL.md), resolved from this skill's real
-location rather than the caller's working directory. An unavailable pass remains
-unmet unless the user has accepted equivalent instructions.
-
-A verifier must independently check fixes and final failure classifications,
-including rounds with no patch. It must not have produced the artifact or
-classification being checked. If independent execution is unavailable, report
-that requirement as unmet rather than claiming an independent review.
-
-## Publish authorized fixes
-
-Use new commits. Never amend, rebase, force-push, or commit on the base branch.
-Stage explicit paths and inspect both the staged diff and the complete PR diff.
-Account for changes introduced by a deliberate base merge; preserve remote history.
-Do not sweep local submodule drift or another agent's changes into the commit.
-
-Immediately before pushing, fetch the exact PR branch and resolve its fetched tip
-as `REMOTE_HEAD`. Run `git merge-base --is-ancestor "$REMOTE_HEAD" HEAD`; require
-exit 0. If it fails, reconcile the concurrent change and repeat affected validation.
-Push without force, verify the resulting remote SHA, and observe that revision's CI.
-
-Apply the repository's PR template to authorized PR updates and retain required
-commit trailers.
+Use new commits; never amend, rebase, force-push, or commit on the base branch.
+Stage explicit paths, inspect staged and full PR diffs, and exclude unrelated work
+or submodule drift. Preserve required trailers and templates. Immediately before
+pushing, fetch the exact PR branch as `REMOTE_HEAD` and require
+`git merge-base --is-ancestor "$REMOTE_HEAD" HEAD` to exit 0. Otherwise reconcile
+and revalidate concurrent changes. Push without force, verify the remote SHA,
+and observe that revision's CI.
 
 ## Completion
 
-Collect a fresh observation before and after checking the final CI evidence.
-Require unchanged head/base SHAs and confirmed mergeability for an open-PR verdict.
-Explain any other merge blocker; a `BLOCKED` status alone does not explain its cause.
+Observe immediately before and after final evidence review. Head, base,
+test-merge identity, relevant attempts/results, and merge requirements must remain
+consistent. Require full applicable CI/report coverage, explained skips, preserved
+intent, semantic merge validation, independent verification, and current CH sync
+when applicable. Successful observer exit or terminal rows alone proves none of these.
 
-Require a complete, terminal CI execution for the current revision. Account for
-expected jobs, explain skips, and validate actual report coverage. Use the newest
-applicable run attempts; do not count a superseded failure as a current failure.
-Record each fix's exact reproduction/regression commands, results, and evidence paths.
+- `GREEN`: applicable CI passed or has justified permitted skips; intent and
+  verification gates passed. List remaining human/merge requirements separately.
+- `BLOCKED`: identified external action/decision needed. Give evidence, owner or
+  destination, next action, and resume trigger. This is not success.
+- `UNSETTLED`: investigation, coverage, or verification incomplete. Continue within
+  the assignment or checkpoint an exact continuation at its limit.
 
-- `CLEAN`: applicable CI passed, mergeability is confirmed, and every investigated
-  issue has a disposition. List remaining human review or external requirements.
-- `SETTLED_WITH_UNRELATED_FAILURES`: remaining CI failures have specific evidence
-  that this PR did not cause them. List each failure and any separate merge blockers.
-- `UNSETTLED`: attribution, coverage, verification, or a required decision remains
-  incomplete. State what would settle it and preserve the next action.
-
-Do not declare completion until the gates and independent verification pass.
-Pushing, timing out, or exhausting a budget does not satisfy them. In continuous
-mode, a settled revision returns to quiet waiting. Closure/merger stops the watcher
-without authorizing that action. Finish with the exact commits, verification limits,
-remaining blockers, and handoff path.
+Unrelated failures never count as green. Explain merge blockers rather than
+merely echoing `BLOCKED`. Continuous mode waits quietly after green and resumes
+blocked work on its trigger. Closure/merger stops watching without authorizing
+that action. Finish with exact commits, verification limits, blockers, and handoff path.

@@ -96,16 +96,79 @@ class ObservationTests(unittest.TestCase):
         self.assertEqual(summary["failures"], [])
         self.assertEqual(summary["action_required"][0]["outcome"], "action_required")
 
-    def test_workflow_runs_count_only_until_their_jobs_appear(self):
+    def test_successful_job_cannot_hide_workflow_blockers(self):
+        for status, conclusion, bucket in [("in_progress", None, "pending"),
+                                           ("completed", "failure", "failures"),
+                                           ("completed", "action_required", "action_required")]:
+            with self.subTest(conclusion=conclusion):
+                data = sources()
+                data["workflows:abc"] = [dict(RUN, status=status, conclusion=conclusion)]
+                summary = observer.summarize(data)
+                self.assertEqual(summary["github_ci_rows"], 2)
+                self.assertEqual(summary["github_ci_terminal"], status == "completed")
+                self.assertEqual(summary[bucket][0]["level"], "run")
+
+    def test_new_run_supersedes_only_its_own_old_suite(self):
+        old = dict(RUN, workflow_id=1, event="pull_request", head_branch="feature", check_suite_id=10)
+        new = dict(old, id=101, status="queued", conclusion=None, check_suite_id=11)
+        other = dict(old, id=102, workflow_id=2, check_suite_id=12)
         data = sources()
-        data["workflows:abc"] = [copy.deepcopy(RUN)]
-        with_jobs = observer.summarize(data)
-        self.assertEqual(with_jobs["github_ci_rows"], 1)
-        self.assertEqual(with_jobs["failures"], [])
-        del data["checks:abc"]
-        without_jobs = observer.summarize(data)
-        self.assertEqual(without_jobs["github_ci_rows"], 1)
-        self.assertEqual(without_jobs["failures"][0]["level"], "run")
+        data["workflows:abc"] = [old, new, other]
+        data["checks:abc"] = [dict(CHECK, conclusion="failure", check_suite={"id": 10})]
+        summary = observer.summarize(data)
+        self.assertFalse(summary["github_ci_terminal"])
+        self.assertEqual([row["id"] for row in summary["pending"]], [101])
+        self.assertEqual([row["id"] for row in summary["failures"]], [102])
+
+    def test_latest_attempt_and_distinct_workflow_events_are_retained(self):
+        old = dict(RUN, workflow_id=1, event="pull_request", run_attempt=1)
+        new = dict(old, run_attempt=2, status="in_progress", conclusion=None)
+        push = dict(old, id=101, event="push")
+        selected = observer.current_runs([new, old, push])
+        self.assertEqual([(r["id"], r["run_attempt"]) for r in selected], [(100, 2), (101, 1)])
+
+    def test_dispatches_and_forks_are_not_treated_as_reruns(self):
+        for event in ("workflow_dispatch", "pull_request"):
+            with self.subTest(event=event):
+                old = dict(RUN, workflow_id=1, event=event, head_branch="feature", head_repository={"id": 1})
+                new = dict(old, id=101, head_repository={"id": 2} if event == "pull_request" else {"id": 1})
+                self.assertEqual(len(observer.current_runs([old, new])), 2)
+
+    def test_runs_for_different_prs_are_not_superseded(self):
+        old = dict(RUN, workflow_id=1, event="pull_request", pull_requests=[{"id": 1}])
+        new = dict(old, id=101, pull_requests=[{"id": 2}])
+        self.assertEqual(len(observer.current_runs([old, new])), 2)
+
+    def test_missing_required_check_is_visible_despite_other_successes(self):
+        data = sources()
+        data["requirements"] = {"head": "abc", "base": "def", "test_merge_sha": "merged-test",
+                                "checks": [{"source": "checks:abc", "name": "build"}]}
+        summary = observer.summarize(data)
+        self.assertTrue(summary["requirements_current"])
+        self.assertEqual(summary["missing_required"], data["requirements"]["checks"])
+
+    def test_requirements_distinguish_sha_kind_and_app(self):
+        data = sources()
+        data["checks:abc"][0]["app"] = {"id": 42}
+        checks = [{"source": "checks:abc", "name": "tests", "app_id": 42},
+                  {"source": "statuses:abc", "name": "tests"},
+                  {"source": "checks:merged-test", "name": "tests"},
+                  {"source": "checks:abc", "name": "tests", "app_id": 43}]
+        data["requirements"] = {"head": "abc", "base": "def", "test_merge_sha": "merged-test", "checks": checks}
+        self.assertEqual(observer.summarize(data)["missing_required"], checks[1:])
+
+    def test_requirements_must_match_all_revisions(self):
+        data = sources()
+        self.assertFalse(observer.summarize(data)["requirements_current"])
+        expected = {"head": "abc", "base": "def", "test_merge_sha": "merged-test", "checks": []}
+        for key in ("head", "base", "test_merge_sha"):
+            data["requirements"] = {**expected, key: "stale"}
+            self.assertFalse(observer.summarize(data)["requirements_current"])
+
+    def test_skips_are_visible_for_coverage_review(self):
+        data = sources()
+        data["checks:abc"][0]["conclusion"] = "skipped"
+        self.assertEqual(observer.summarize(data)["skipped"][0]["name"], "tests")
 
     def test_pagination_retains_later_pages(self):
         first = [{"id": n} for n in range(100)]
@@ -134,7 +197,7 @@ class ObservationTests(unittest.TestCase):
                 patch.object(observer, "paginated", side_effect=listing):
             data = observer.observe_settled(PR["html_url"])
         self.assertIn("checks:abc", data)
-        self.assertEqual(len(calls), 7)
+        self.assertEqual(len(calls), 10)
 
     def test_api_uses_get_and_propagates_failures(self):
         failure = subprocess.CalledProcessError(1, ["gh"], stderr="API unavailable")
@@ -151,11 +214,11 @@ class ObservationTests(unittest.TestCase):
         moved["head"]["sha"] = "new-head"
         with patch.object(observer, "github", side_effect=[PR, moved]), \
                 patch.object(observer, "paginated", return_value=[]):
-            with self.assertRaisesRegex(ValueError, "PR head or state changed"):
+            with self.assertRaisesRegex(ValueError, "PR revision or mergeability changed"):
                 observer.observe(PR["html_url"])
 
     def test_comment_churn_during_collection_is_not_a_race(self):
-        churned = dict(PR, updated_at="2026-09-07T00:05:00Z", body="Edited.", mergeable_state="unstable")
+        churned = dict(PR, updated_at="2026-09-07T00:05:00Z", body="Edited.")
         with patch.object(observer, "github", side_effect=[PR, churned]), \
                 patch.object(observer, "paginated", return_value=[]):
             data = observer.observe(PR["html_url"])
@@ -175,14 +238,39 @@ class ObservationTests(unittest.TestCase):
                 observer.observe_settled(PR["html_url"], attempts=3)
         self.assertEqual(observe.call_count, 3)
 
-    def test_observes_the_head_only_with_review_sources(self):
+    def test_observes_head_and_test_merge_with_review_sources(self):
         with patch.object(observer, "github", return_value=PR), \
                 patch.object(observer, "paginated", return_value=[]) as pages:
             data = observer.observe(PR["html_url"])
-        self.assertEqual(sorted(data), ["checks:abc", "discussion", "pr", "review_comments",
-                                        "reviews", "statuses:abc", "workflows:abc"])
+        self.assertEqual(sorted(data), ["checks:abc", "checks:merged-test", "discussion", "pr", "review_comments",
+                                        "reviews", "statuses:abc", "statuses:merged-test", "workflows:abc", "workflows:merged-test"])
         self.assertEqual(data["pr"]["test_merge_sha"], "merged-test")
-        self.assertEqual(pages.call_count, 6)
+        self.assertEqual(pages.call_count, 9)
+
+    def test_base_and_mergeability_changes_invalidate_collection(self):
+        for change in ("base", "mergeability", "test_merge", "retarget"):
+            with self.subTest(change=change):
+                moved = copy.deepcopy(PR)
+                if change == "base":
+                    moved["base"]["sha"] = "new-base"
+                elif change == "retarget":
+                    moved["base"]["ref"] = "release"
+                elif change == "test_merge":
+                    moved["merge_commit_sha"] = "new-merge"
+                else:
+                    moved.update(mergeable=False, mergeable_state="dirty")
+                with patch.object(observer, "github", side_effect=[PR, moved]), \
+                        patch.object(observer, "paginated", return_value=[]):
+                    with self.assertRaises(observer.ObservationChanged):
+                        observer.observe(PR["html_url"])
+
+    def test_merge_only_failure_is_reported(self):
+        def listing(host, endpoint, key=None):
+            return [dict(CHECK, conclusion="failure")] if "commits/merged-test/check-runs" in endpoint else []
+        with patch.object(observer, "github", return_value=PR), \
+                patch.object(observer, "paginated", side_effect=listing):
+            data = observer.observe(PR["html_url"])
+        self.assertEqual(observer.summarize(data)["failures"][0]["source"], "checks:merged-test")
 
     def test_closed_pr_still_collects_head_ci(self):
         closed = dict(PR, state="closed", merged=True)
@@ -297,7 +385,58 @@ class StateTests(unittest.TestCase):
         changed = sources()
         changed["pr"]["html_url"] = "https://github.com/example/project/pull/43"
         with self.assertRaisesRegex(ValueError, "different PR"):
-            observer.record(self.state_dir, changed)
+                observer.record(self.state_dir, changed)
+
+    def test_timestamp_only_change_is_quiet_but_keeps_fresh_evidence(self):
+        observer.record(self.state_dir, sources())
+        changed = sources()
+        changed["pr"]["updated_at"] = "2026-09-10T12:00:00Z"
+        event = observer.record(self.state_dir, changed)
+        self.assertEqual(event["event"], "unchanged")
+        self.assertEqual(len(self.events()), 1)
+        self.assertEqual(json.loads(Path(event["sources"]["pr"]).read_text())["updated_at"],
+                         changed["pr"]["updated_at"])
+
+    def test_same_result_new_attempt_is_not_quiet(self):
+        data = sources()
+        data["workflows:abc"] = [dict(RUN, run_attempt=1)]
+        observer.record(self.state_dir, data)
+        data["workflows:abc"][0]["run_attempt"] = 2
+        event = observer.record(self.state_dir, data)
+        self.assertEqual(event["changed"], ["workflows:abc"])
+
+    def test_corrupt_source_is_repaired_before_reporting_success(self):
+        first = observer.record(self.state_dir, sources())
+        path = Path(first["sources"]["checks:abc"])
+        path.write_bytes(b'\xff{"id":')
+        observer.record(self.state_dir, sources())
+        self.assertEqual(json.loads(path.read_text()), sources()["checks:abc"])
+
+    def test_interrupted_source_publication_can_be_retried(self):
+        with patch.object(Path, "replace", side_effect=OSError("interrupted")):
+            with self.assertRaises(OSError):
+                observer.record(self.state_dir, sources())
+        self.assertFalse((self.state_dir / "latest.json").exists())
+        result = observer.record(self.state_dir, sources())
+        self.assertTrue(all(json.loads(Path(path).read_text()) is not None for path in result["sources"].values()))
+
+    def test_partial_event_tail_does_not_corrupt_replayed_event(self):
+        observer.record(self.state_dir, sources())
+        with (self.state_dir / "events.jsonl").open("ab") as output:
+            output.write(b'{"event":' + b'x' * 5000)
+        data = sources()
+        data["pr"]["mergeable"] = False
+        observer.record(self.state_dir, data)
+        self.assertEqual(len(self.events()), 2)
+
+    def test_compact_output_exposes_omitted_count_and_full_evidence(self):
+        data = sources()
+        data["checks:abc"] = [dict(CHECK, id=n, conclusion="failure") for n in range(25)]
+        full = observer.record(self.state_dir, data)
+        compact = observer.compact(full)
+        self.assertEqual((compact["failures_count"], len(compact["failures"])), (25, 20))
+        self.assertEqual(len(full["failures"]), 25)
+        self.assertEqual(len(json.loads(Path(compact["sources"]["checks:abc"]).read_text())), 25)
 
 
 class ProcessTests(unittest.TestCase):
@@ -323,6 +462,8 @@ class ProcessTests(unittest.TestCase):
                     "pulls/42/reviews": [[]],
                     "commits/abc/check-runs": [{"total_count": 1, "check_runs": [CHECK]}],
                     "commits/abc/status": [{"total_count": 0, "statuses": []}],
+                    "commits/merged-test/check-runs": [{"total_count": 0, "check_runs": []}],
+                    "commits/merged-test/status": [{"total_count": 0, "statuses": []}],
                     "actions/runs": [{"total_count": 0, "workflow_runs": []}]}
         scripted.update(responses)
         (self.gh_dir / "responses.json").write_text(json.dumps(scripted))
@@ -339,6 +480,37 @@ class ProcessTests(unittest.TestCase):
         result = json.loads(run.stdout)
         self.assertEqual((result["event"], result["head"], result["github_ci_terminal"]),
                          ("changed", "abc", True))
+
+    def test_process_reports_missing_requirement_and_persists_inventory(self):
+        self.script()
+        self.state_dir.mkdir()
+        requirements = {"head": "abc", "base": "def", "test_merge_sha": "merged-test",
+                        "checks": [{"source": "statuses:abc", "name": "CH Inc sync"}]}
+        (self.state_dir / "requirements.json").write_text(json.dumps(requirements))
+        run = self.run_observer()
+        self.assertEqual(run.returncode, 0, run.stderr)
+        result = json.loads(run.stdout)
+        self.assertTrue(result["requirements_current"])
+        self.assertEqual(result["missing_required_count"], 1)
+        self.assertEqual(json.loads(Path(result["sources"]["requirements"]).read_text()), requirements)
+
+    def test_malformed_requirements_preserve_last_good_snapshot(self):
+        self.script()
+        self.assertEqual(self.run_observer().returncode, 0)
+        latest = (self.state_dir / "latest.json").read_bytes()
+        (self.state_dir / "requirements.json").write_text('["wrong shape"]')
+        run = self.run_observer()
+        self.assertEqual(run.returncode, 1)
+        self.assertEqual(json.loads(run.stderr)["event"], "observation_error")
+        self.assertEqual((self.state_dir / "latest.json").read_bytes(), latest)
+
+    def test_watch_does_not_print_timestamp_only_polls(self):
+        changed_time = dict(PR, updated_at="2026-09-10T12:00:00Z")
+        closed = dict(changed_time, state="closed", merged=True)
+        self.script(**{"pulls/42": [PR, PR, changed_time, changed_time, closed]})
+        run = self.run_observer("--watch", "--interval", "1")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual([json.loads(line)["state"] for line in run.stdout.splitlines()], ["open", "closed"])
 
     def test_watch_prints_changes_and_stops_when_closed(self):
         closed = dict(PR, state="closed", merged=True)

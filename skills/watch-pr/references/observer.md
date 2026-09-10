@@ -1,94 +1,123 @@
 # Observer
 
-Requires Python 3, authenticated `gh` with `api --paginate --slurp`, and a POSIX
-host (Linux/macOS). Run it from this skill's own directory, the directory this
-SKILL.md was loaded from (e.g. `~/.claude/skills/watch-pr`,
-`~/.codex/skills/watch-pr`, `~/.cursor/skills-cursor/watch-pr`, or
-`~/.copilot/skills/watch-pr`). The examples write `<skill-dir>` for that path;
-substitute the real one. A symlinked skill directory works as is.
-
-One observation:
+Requires Python 3, POSIX (Linux/macOS), and authenticated `gh` supporting
+`api --paginate --slurp`. Resolve `<skill-dir>` from this skill's installed
+location, including symlinks; never from the caller's working directory.
 
 ```bash
 python3 <skill-dir>/scripts/observe_pr.py "$PR_URL" --state-dir "$STATE_DIR/observer"
-```
-
-Quiet polling in a supported background monitor:
-
-```bash
 python3 <skill-dir>/scripts/observe_pr.py "$PR_URL" --state-dir "$STATE_DIR/observer" --watch --interval 120
 ```
 
-The observer never mutates GitHub, invokes an agent, posts text, or repairs code.
-The caller owns wakeups, schedule, permissions, failure attribution, and completion.
+The observer only reads GitHub and writes local evidence. The caller owns
+permissions, external reports, repair, completion, and a durable wakeup mechanism.
 
-## What it collects
+## Coverage and requirements
 
-Every observation reads the PR, its issue comments, inline review comments, and
-reviews, plus the check runs, commit statuses, and Actions runs of the PR head
-commit, whether the PR is open, closed, or merged. CI attaches to the head commit
-only; GitHub's test-merge commit never carries any, so it is not queried. Its SHA
-and the mergeability verdict travel in the `pr` source.
+Each poll reads PR metadata, discussion, inline comments, reviews, checks,
+statuses, and workflow runs. CI is collected for both head and current test-merge
+SHA when available. GitHub can require [test-merge checks](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
+Do not treat all head and merge rows as interchangeable: establish which revision
+and source each expected job must test, and explain inapplicable rows explicitly.
 
-GitHub computes mergeability lazily: the first read of a cold PR reports `null`.
-The observer re-reads the PR a few times, two seconds apart, before collecting,
-and records `null` only when it never settles. After collecting, it re-reads the
-PR once more and repeats the whole collection if the head or state moved
-meanwhile, or if a paginated listing grew under it; it makes up to three attempts.
-Comment, label, and title churn during collection does not invalidate it.
+Unknown mergeability gets five reads, two seconds apart. A collection repeats up
+to three times if lifecycle, head/base identity, mergeability, test-merge SHA, or
+pagination coverage changes. Comment/title/label churn does not invalidate CI
+collection; decision-relevant edits are captured on the next poll.
 
-## What it writes
+Workflow rows remain visible even when jobs exist. For automatic push, PR, and
+merge-group events, only the newest run per workflow ID/event/branch/fork is
+summarized, keeping different PR identities separate. Checks belonging to known
+superseded suites are excluded. Manually
+triggered runs remain separate because their inputs may differ. Raw sources
+retain all attempts; inspect them when applicability is ambiguous. Do not group
+by display name or combine a new pending attempt with an old passing verdict.
 
-`sources/<sha256>.json` holds each source's content as compact JSON named by its
-hash, written once; an unchanged source is never rewritten. `events.jsonl` gains
-one line per changed observation, with `observed_at`, `snapshot_id`, the
-`changed` source names, and the `sources` name-to-hash map, appended before
-`latest.json` advances. `snapshot_id` is derived from the source hashes, so a
-replay after an interruption produces the same id: skip an event whose
-`snapshot_id` matches the last one processed. `latest.json` records the last
-successful poll time and the current hashes. In watch mode a failed poll appends
-`{"event": "observation_error", ...}` to `events.jsonl` as well.
+Once expected GitHub jobs are established from effective rules and CI plans,
+atomically write `observer/requirements.json` (names below are illustrative):
 
-## Output and exit codes
+```json
+{
+  "head": "HEAD_SHA",
+  "base": "BASE_SHA",
+  "test_merge_sha": "TEST_MERGE_SHA",
+  "checks": [
+    {"source": "checks:HEAD_SHA", "name": "build", "app_id": 15368},
+    {"source": "statuses:HEAD_SHA", "name": "CH Inc sync"}
+  ]
+}
+```
 
-Single-observation mode prints one JSON result: `event` (`changed` or
-`unchanged`), `changed`, `snapshot_id`, `sources` (name to file path), `state`,
-`merged`, `head`, `base`, `mergeable`, `mergeable_state`, `github_ci_rows`,
-`github_ci_terminal`, `failures`, and `action_required`. Watch mode prints only
-changed observations and stops after observing a closed or merged PR.
+Use JSON `null` when there is no test-merge SHA. Sources are `checks:SHA`,
+`statuses:SHA`, or `workflows:SHA`; use the actual applicable SHA. `app_id` is
+optional and pins a required check to its expected GitHub App. A check and status
+with the same required name need separate entries. Include all known applicable
+GitHub jobs; track external coverage and permitted exclusions in `STATE.md`.
 
-Rows come from three levels: `status`, `job` (a check run), and `run` (an Actions
-workflow). A run only aggregates its jobs, so runs count only while no job has
-appeared yet. `github_ci_terminal` is true when every counted row has finished.
-`failures` lists finished rows whose conclusion is not `success`, `skipped`, or
-`neutral`, each with its raw `outcome`. `action_required` rows are listed apart:
-they mean a run awaits approval, which is a merge blocker rather than a defect.
+`requirements_current` is false if the file is absent or its revisions differ.
+When current, `missing_required` lists expectations without matching rows.
+These are presence checks, not a green verdict: require current expectations,
+no missing entries, successful applicable results, justified skips, and complete
+external evidence. An incomplete inventory cannot establish coverage merely by
+being revision-current. Refresh expectations when rules/configuration change;
+retain unchanged entries to avoid repeatedly rediscovering CI.
 
-Exit 0 means observation succeeded, never that CI passed. Exit 1 is an error,
-reported on stderr as `{"event": "observation_error", "error": ...}`. Exit 3 is
-`observer_busy`: another watcher already owns this state directory. In watch mode
-a transient `gh` failure or a collection race is logged and retried with growing
-backoff, and the process exits 1 after five consecutive failures. A schema error
-or a state directory that belongs to another PR is fatal in both modes.
+## Blocker actions
 
-Observations are serialized: a one-shot read waits up to a minute for a running
-watcher's poll to finish, and the watcher releases the lock while it sleeps. Only
-one `--watch` process may own a state directory. Monitor termination or task
-cancellation ends observation; no autonomous service is installed. The lock does
-not establish ownership of the PR worktree.
+| Signal | Action and evidence needed |
+| --- | --- |
+| Failed build/test/style/performance | Diagnose the exact signature; repair within intent; reproduce and verify the applicable CI configuration. |
+| Missing or unexpected skip/neutral | Inspect required rules, trigger/path/label conditions, CI plan, and upstream dependencies. Repair/retrigger when authorized; justify any exclusion. Never disable a gate to satisfy it. |
+| Queued/pending/waiting | Identify runner, dependency, approval, or external job and last progress. Record when to revisit; investigate stagnation against that job's normal runtime. |
+| Cancelled/stale/timed out | Establish whether superseded, intentional, infrastructure, or a regression. Recover only the applicable revision and attempt. |
+| Approval/action required | Identify the required actor and action. Preserve a blocked resume trigger; do not treat it as a code defect or bypass trust checks. |
+| Infrastructure/flaky | Require signature/configuration evidence. Retry the smallest scope only when justified; persistent identical failure without new evidence needs escalation. |
+| Stale external status or sync | Inspect the actual producer and tested revisions; verify status propagation. A stale summary is not a reason to patch code. |
+| Unknown/API/access failure | Restore observation/access or report the external dependency. Empty results never establish success. |
 
-## Limits
+## Evidence and compact output
 
-`github_ci_terminal` describes the observed GitHub rows only. Even when true, failed
-rows can remain, required jobs may not have appeared yet, or an external report may
-still be incomplete. Review-thread resolution and branch-protection requirements
-must be checked separately. Fork-only checks and provider-specific pipelines may
-require an additional source. The agent must establish complete relevant coverage
-before issuing `CLEAN` or `SETTLED_WITH_UNRELATED_FAILURES`.
+`sources/<sha256>.json` holds complete raw sources. Publication is atomic;
+subsequent observations verify existing bytes and repair interrupted legacy writes.
+`events.jsonl` records changed observations before `latest.json` advances. Events
+include source hashes and a content-derived `snapshot_id`; deduplicate an immediate
+replay against the last processed event, not against every historical ID. Advance
+the consumer cursor only after recording the decision/next action in `STATE.md`.
 
-GitHub's [check-run endpoint](https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference)
-limits the suites it examines on extremely busy revisions. Its
-[combined-status endpoint](https://docs.github.com/en/rest/commits/statuses#get-the-combined-status-for-a-specific-reference)
-returns the latest legacy status per context. The
-[PR endpoint](https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request)
-reports unknown mergeability as null; that is not a clean result.
+`latest.json` records the last successful poll time, snapshot, raw source hashes,
+and signal hashes. Timestamp-only `updated_at` changes retain fresh evidence but
+do not produce an event. Edited content, status, IDs, and run attempts still do.
+Raw evidence is stored locally; do not load whole snapshots into agent context.
+
+One-shot mode prints one JSON result; watch mode prints only meaningful changes.
+Results contain revision/merge state, source paths, `github_ci_rows`,
+`github_ci_terminal`, `requirements_current`, and blocker lists: `failures`,
+`action_required`, `pending`, `skipped`, `missing_required`. Each list has a total
+`*_count` and at most 20 printed entries. If a count exceeds the printed length,
+inspect the linked raw sources to cover the remainder. Never silently drop them.
+
+`github_ci_terminal` means only that observed current rows finished, even if they
+failed or expected jobs never appeared. Required-rule discovery, review-thread
+resolution, merge queues, fork-only pipelines, private sync, and external report
+coverage still need provider-specific evidence. GitHub's check-run endpoint limits
+examined suites; workflow searches cap results at 1,000. Incomplete pagination
+is an error, not a clean result.
+
+## Lifetime and recovery
+
+Exit 0 means observation succeeded; 1 means error; 3 means observer busy. Errors
+are JSON on stderr. Watch mode also appends transient API/race errors to the
+event log, retries with bounded backoff, and exits after five consecutive failures.
+Invalid schemas/state are fatal. The watcher serializes polls, permits one watch
+process per state directory, and stops when the PR is closed/merged.
+
+Configure the host supervisor to wake on changed events and exits and to check
+freshness even when stdout is quiet. Allow for collection/backoff when setting
+staleness limits. Repeated failure needs access/provider diagnosis, not an endless
+restart loop. Verify the monitor's PID/job identity and last successful poll on
+resume. An observer lock is not a repair lease. Preserve a single repair owner.
+
+A one-shot read during quiet polling must not consume an event on behalf of the
+agent: process unacknowledged events from `events.jsonl`, not just fresh stdout.
+Record a separate cadence for pending external reports and blocked resume triggers.
+No service or scheduler is installed by this script.
