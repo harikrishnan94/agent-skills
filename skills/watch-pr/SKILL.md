@@ -129,8 +129,9 @@ evidence/scope. Report an unavailable independent check as an unmet gate.
 
 Use new commits; never amend, rebase, force-push, or commit on the base branch.
 Stage explicit paths, inspect staged and full PR diffs, and exclude unrelated work
-or submodule drift. Preserve required trailers and templates. Immediately before
-pushing, fetch the exact PR branch as `REMOTE_HEAD` and require
+or submodule drift. Commit subjects and bodies must not include the `🕵️` marker,
+including merge commits. Preserve required trailers and templates. Immediately
+before pushing, fetch the exact PR branch as `REMOTE_HEAD` and require
 `git merge-base --is-ancestor "$REMOTE_HEAD" HEAD` to exit 0. Otherwise reconcile
 and revalidate concurrent changes. Push without force, verify the remote SHA,
 and observe that revision's CI.

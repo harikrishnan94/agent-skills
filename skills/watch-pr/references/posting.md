@@ -2,8 +2,11 @@
 
 Prefix every GitHub post containing content not written by the user with exactly
 `🕵️ `, including the space. This covers comments, inline reviews, replies, and
-PR/issue titles and bodies. Mark each independently posted item. Commit messages
-are exempt.
+PR/issue titles and bodies. Mark each independently posted item.
+
+Commit subjects and bodies, including merge commits, must not include the `🕵️`
+marker. Preserve required attribution trailers. The rules below apply only to
+GitHub posts.
 
 - Generated, summarized, translated, polished, and mixed user/agent text need it.
 - Approval of a draft does not make it user-authored.
