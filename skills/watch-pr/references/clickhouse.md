@@ -81,6 +81,6 @@ Follow the worktree's `AGENTS.md` for builds, tests, style, and PR text. In part
 - Use the repository's test-server setup. Missing cluster services, logging, or
   fixture paths can manufacture local failures unrelated to either revision.
 - Run the local style check before pushing. Use `.github/PULL_REQUEST_TEMPLATE.md`
-  for any authorized PR-body update, with the mandatory `🕵️ ` prefix.
+  for any authorized PR-body update. The attribution prefix applies only to comments.
 - Use new commits, and preserve the PR's target branch. Do not create stacked PRs
   or broaden this watcher into fixes for unrelated failures.

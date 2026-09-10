@@ -18,7 +18,8 @@ Carry existing authority for commits, pushes, base merges, reruns, and private
 sync repairs across rounds and handoffs. Prepare and verify a concrete action
 before asking for missing authority. Posting, changing another repository,
 replacing/closing the PR, and merging the PR need their own authority.
-Before drafting GitHub content, read [posting.md](references/posting.md).
+Prefix every GitHub comment you post with `🕵 `, including review replies.
+Use the marker only on comments; follow [posting.md](references/posting.md).
 
 Default to watching until the current revision is green or needs external action.
 Continuous mode watches until closure/merger. Honor existing budgets, deadlines,
@@ -129,7 +130,7 @@ evidence/scope. Report an unavailable independent check as an unmet gate.
 
 Use new commits; never amend, rebase, force-push, or commit on the base branch.
 Stage explicit paths, inspect staged and full PR diffs, and exclude unrelated work
-or submodule drift. Commit subjects and bodies must not include the `🕵️` marker,
+or submodule drift. Commit subjects and bodies must not include the `🕵` marker,
 including merge commits. Preserve required trailers and templates. Immediately
 before pushing, fetch the exact PR branch as `REMOTE_HEAD` and require
 `git merge-base --is-ancestor "$REMOTE_HEAD" HEAD` to exit 0. Otherwise reconcile

@@ -1,24 +1,22 @@
-# GitHub attribution
+# GitHub comment attribution
 
-Prefix every GitHub post containing content not written by the user with exactly
-`🕵️ `, including the space. This covers comments, inline reviews, replies, and
-PR/issue titles and bodies. Mark each independently posted item.
+Every GitHub comment you post must begin with `🕵 ` (the symbol followed by a
+space). This includes PR and issue comments, review comments, and review-thread
+replies. Prefix each comment, including reviewer requests, summaries, and closing
+comments, regardless of who drafted its text.
 
-Commit subjects and bodies, including merge commits, must not include the `🕵️`
-marker. Preserve required attribution trailers. The rules below apply only to
-GitHub posts.
+Use this attribution marker only on comments. Do not add it to PR or issue
+titles or bodies, or to commit subjects or bodies, including merge commits.
+Preserve required attribution trailers and templates.
 
-- Generated, summarized, translated, polished, and mixed user/agent text need it.
-- Approval of a draft does not make it user-authored.
-- Only user-authored text posted verbatim is exempt. Supplying text does not
-  establish authorship; prefix when uncertain.
-- For attachments, mark the accompanying title, caption, or message.
-- Editing an item with agent-written text requires its prefix. Preserve history
-  and meaning; do not rewrite unrelated historical posts.
-- Keep an existing `🕵️ ` once. Do not substitute another emoji. This explicit
-  convention overrides generic guidance against emoji; it grants no posting authority.
+- For attachments in a comment, prefix the accompanying comment text.
+- Editing a comment requires its prefix. Preserve history and meaning; do not
+  rewrite unrelated historical content.
+- Keep an existing prefix once. Do not duplicate it or substitute another emoji.
+  This convention overrides generic guidance against emoji in comments; it
+  grants no posting authority.
 
-Prepare the exact prefixed payload before any required approval. Immediately
-before posting, check authorization, destination, authorship, and prefix. Record
-the resulting URL/ID in state. Inspect the destination before retrying an
+Prepare the exact prefixed comment before any required approval. Immediately
+before posting, check authorization, destination, and prefix. Record the
+resulting URL/ID in state. Inspect the destination before retrying an
 uncertain write or resuming, to avoid duplicate posts.
