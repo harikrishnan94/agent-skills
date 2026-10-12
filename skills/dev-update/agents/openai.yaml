@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dev Update"
+  short_description: "Draft a short #dev update since your last post"
+  default_prompt: "Use $dev-update to draft my #dev update since my last posted update. Keep most items short."
