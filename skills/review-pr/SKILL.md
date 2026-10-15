@@ -27,8 +27,15 @@ is posted until he says "post".
   zsh). Never check out or create branches in Hari's tree.
 - **Authorship.** If the author is `harikrishnan94`, stop: this skill is for
   other people's PRs.
-- **Pin the head SHA** at the start; re-check it before posting.
+- **Pin the head SHA** at the start; re-check it before presenting and again
+  before posting.
 - **Say what you traced and what you ran.**
+- **No step is skipped** for time or tool budget. Each step 1-7 ends up in the
+  Review record (step 8) as `done`, `n/a: <reason>` or `not done: <reason>`.
+  `n/a` is allowed only where the step names the condition: no review skill in
+  the repository, not a ClickHouse repository, the challenge exemption in step
+  5, an evidence section that does not apply. Anything else is `not done`, and
+  the package then opens with `Incomplete: <steps>.`
 
 ## Workflow
 
@@ -52,6 +59,10 @@ Steps 9 (post) and 10 (re-review) run only when Hari asks.
 - Whether the author is a human or an AI agent account.
 - Hari's open PRs that touch the same files
   (`gh pr list --author harikrishnan94 --state open --json number,files`).
+
+Record: Author (human or AI agent account), Issues, CI caused by PR, Existing
+reviews (bot blockers included), Repo review skill (its gates, or "none in
+repo"), Overlapping PRs.
 
 ### 2. Explain
 
@@ -85,6 +96,8 @@ title claims?
 Problems you notice go to Findings. Pass every line of this section, diagram
 labels included, through `plain-prose`.
 
+Record: Parts n/a, each with its reason, or "none".
+
 ### 3. Structural passes
 
 - `reduce-complexity`, invoked as "report only", on the production diff
@@ -93,12 +106,19 @@ labels included, through `plain-prose`.
   report: list what it would change and edit nothing.
 - `plain-prose` on the PR description and changelog entry.
 
-Fold the results into Findings in your own words. Drop what fails a check
+What holds becomes a Finding, in your own words. Drop what fails a check
 against the source, and pre-existing issues the PR does not touch.
+
+Record: for each pass, what it reported, what became a finding, and what you
+dropped and why.
 
 ### 4. Evidence
 
 Run the checks in [references/evidence.md](references/evidence.md) that apply.
+
+Record: one entry for each section of evidence.md (Performance, Correctness,
+Tests, Description, Design and scope): `applied` with the checks you ran and
+what they showed, or `n/a: <reason>`.
 
 ### 5. Verify
 
@@ -114,6 +134,11 @@ Run the checks in [references/evidence.md](references/evidence.md) that apply.
   the conflict.
 - Do not build or benchmark by default. Propose the experiment from
   evidence.md and ask.
+
+Record: Re-checked at (the SHA), Challenger (what it confirmed, what it added,
+what you dropped; or the exemption above, named), Conflicts (trace against
+measurement, or "none"), Labels (incomplete fix or new regression, per
+correctness issue, or "none").
 
 ### 6. Choose
 
@@ -136,23 +161,40 @@ Comments:
 - Raise a pre-existing behavior only when the PR changes its cost, and say it
   predates the PR.
 
+Record: Row (the verdict-table row that applied).
+
 ### 7. Draft
 
 Write each comment with `hari-voice`, then pass it through `plain-prose` and
 `humanize`. Then apply [references/comments.md](references/comments.md);
 its review rules override `hari-voice` where they differ.
 
+Record: Passes (those applied to every comment), Greeting (the comments.md
+rule used: human, AI agent account, test-only bot).
+
 ### 8. Present and stop
+
+Use this format exactly. The headings, part labels, record labels and status
+words are fixed; the checker rejects anything else.
 
 ```markdown
 ## <title> (#<N> by @<author>): <verdict>
-<direct answer to Hari's question>
+<direct answer>
+Head: <sha> (re-checked before presenting: unchanged | moved to <sha>)
 
 ### What it does
-<the nine parts from step 2>
+**1. Change and gain.** <text>
+**2. Context.** <text>
+**3. Problem.** <text>
+**4. Before → After.** <text>
+**5. Promises and unchanged.** <text>
+**6. How the code does it.** <text>
+**7. Performance.** <text>
+**8. Correctness and safety.** <text>
+**9. Interaction.** <text>
 
 ### Findings
-- **Blocking** / **Non-blocking** <finding>. Evidence: <what you checked>.
+- **Blocking** | **Non-blocking** <finding>. Evidence: <what you checked>.
 
 ### Not raising
 - <candidate>: <why>
@@ -161,10 +203,61 @@ its review rules override `hari-voice` where they differ.
 Body: <text>
 1. `<path>:<line>` <comment>
 
-Verification limits: <traced vs run, what you could not access>
+### Review record
+- **1. Gather:** done
+  - Author: <result>
+  - Issues: <result>
+  - CI caused by PR: <result>
+  - Existing reviews: <result>
+  - Repo review skill: <result>
+  - Overlapping PRs: <result>
+- **2. Explain:** done
+  - Parts n/a: <result>
+- **3. Structural passes:** done
+  - reduce-complexity: <result>
+  - humanize: <result>
+  - plain-prose: <result>
+- **4. Evidence:** done
+  - Performance: applied: <result>
+  - Correctness: applied: <result>
+  - Tests: applied: <result>
+  - Description: applied: <result>
+  - Design and scope: applied: <result>
+- **5. Verify:** done
+  - Re-checked at: <sha>
+  - Challenger: <result>
+  - Conflicts: <result>
+  - Labels: <result>
+- **6. Choose:** done
+  - Row: <result>
+- **7. Draft:** done
+  - Passes: <result>
+  - Greeting: <result>
+
+Verification limits: <limits>
 ```
 
-End by asking which comments to post or change.
+- `<verdict>` is one of the four in step 6. The review event follows it:
+  Request changes is `REQUEST_CHANGES`, Comment is `COMMENT`, and both
+  Approve verdicts are `APPROVE`.
+- `<direct answer>` answers Hari's question. If any status below is `not
+  done`, it starts with `Incomplete: <steps>.`
+- Findings and Not raising each hold bullets, or the single word `None.`
+- A step's status is `done`, `n/a: <reason>` or `not done: <reason>`. An
+  Evidence entry starts with `applied`, `n/a: <reason>` or `not done: <reason>`.
+  Give the results as step 1-7 say in their Record lines.
+- If the head moved, re-check every finding and anchor, set `Head` to the SHA
+  you pinned, and say so in the direct answer.
+
+Then:
+
+1. Write the package to `/tmp/review-pr-<N>/package.md`.
+2. Run `python3 "<skill dir>/scripts/check_review.py"
+   /tmp/review-pr-<N>/package.md`. Installed copies are symlinks, so resolve
+   the skill directory with `realpath` first.
+3. Fix the package until the check prints `OK`. A failing check means the
+   review is not finished. Then show the same text in chat, and end by asking
+   which comments to post or change.
 
 ### 9. Post
 
