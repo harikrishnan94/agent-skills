@@ -112,8 +112,10 @@ directory (installs are symlinks) and run `scripts/list_sessions.py` and
 **Point budget.** Count every bullet under a workstream label, sub-bullets
 included. Labels and tables do not count. Hari's number for the request wins;
 he has asked for 5 on a travel day, 15 on a full day and 10 for one
-workstream. Without one: at most 15 for the day, 10 per workstream, and 2
-sub-points per review. When the budget forces a cut, list what you dropped.
+workstream. Without one: a soft limit of 20 for the day, and 2 sub-points per
+review. Past 20, cut the non-significant points to make room for the
+significant ones. Going over 20 is fine when a lot happened or the day needs
+the record. When the budget forces a cut, list what you dropped.
 
 **Include**, outcome first:
 
