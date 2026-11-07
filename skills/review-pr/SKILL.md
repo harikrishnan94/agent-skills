@@ -266,9 +266,11 @@ Verification limits: <limits>
 
 Then:
 
-1. Write the package to `/tmp/review-pr-<N>/package.md`.
-2. Run `python3 "<skill dir>/scripts/check_review.py"
-   /tmp/review-pr-<N>/package.md`. Installed copies are symlinks, so resolve
+1. Write the package to `./tmp/review-pr-<N>/package.md` at the root of the
+   repository under review. Create `./tmp/review-pr-<N>/` if it is missing.
+   Do not stage or commit it.
+2. From that same root, run `python3 "<skill dir>/scripts/check_review.py"
+   ./tmp/review-pr-<N>/package.md`. Installed copies are symlinks, so resolve
    the skill directory with `realpath` first.
 3. Fix the package until the check prints `OK`. A failing check means the
    review is not finished. Then show the same text in chat, and end by asking
