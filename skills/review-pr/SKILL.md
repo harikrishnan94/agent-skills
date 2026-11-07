@@ -100,17 +100,30 @@ Record: Parts n/a, each with its reason, or "none".
 
 ### 3. Structural passes
 
-- `reduce-complexity`, invoked as "report only", on the production diff
-  `<base sha>..<head sha>` (not a checked-out branch).
+Run these three passes separately. When the host can dispatch subagents, each
+pass gets its own fresh one. Run them at the same time when the host allows
+more than one at once. The brief is the skill, the invocation below, the PR
+URL, and the base and head SHAs. It follows the ground rules above: read-only,
+no checkout, no branch in this tree. Leave out this review: the explanation,
+the findings, and the other passes' reports. A subagent that inherits this
+review's context is not independent; run that pass yourself.
+
+The pass still runs when the host has no subagents, or a subagent cannot be
+started or returns nothing. Run it yourself.
+
+- `reduce-complexity`, invoked as "report only", on the whole production diff
+  `<base sha>..<head sha>` (not a checked-out branch, and not one subagent
+  per file).
 - `humanize` fix-mode checks on the PR's code comments and description, as a
   report: list what it would change and edit nothing.
 - `plain-prose` on the PR description and changelog entry.
 
 What holds becomes a Finding, in your own words. Drop what fails a check
-against the source, and pre-existing issues the PR does not touch.
+against the source, and pre-existing issues the PR does not touch. A pass's
+report is not itself a finding.
 
-Record: for each pass, what it reported, what became a finding, and what you
-dropped and why.
+Record: for each pass, `subagent;` or `inline: <reason>;`, then what it
+reported, what became a finding, and what you dropped and why.
 
 ### 4. Evidence
 
@@ -214,9 +227,9 @@ Body: <text>
 - **2. Explain:** done
   - Parts n/a: <result>
 - **3. Structural passes:** done
-  - reduce-complexity: <result>
-  - humanize: <result>
-  - plain-prose: <result>
+  - reduce-complexity: subagent; <result>
+  - humanize: subagent; <result>
+  - plain-prose: subagent; <result>
 - **4. Evidence:** done
   - Performance: applied: <result>
   - Correctness: applied: <result>
@@ -243,9 +256,11 @@ Verification limits: <limits>
 - `<direct answer>` answers Hari's question. If any status below is `not
   done`, it starts with `Incomplete: <steps>.`
 - Findings and Not raising each hold bullets, or the single word `None.`
-- A step's status is `done`, `n/a: <reason>` or `not done: <reason>`. An
-  Evidence entry starts with `applied`, `n/a: <reason>` or `not done: <reason>`.
-  Give the results as step 1-7 say in their Record lines.
+- A step's status is `done`, `n/a: <reason>` or `not done: <reason>`. A
+  structural-pass entry starts with `subagent;` or `inline: <reason>;`, then
+  what the pass reported. An Evidence entry starts with `applied`,
+  `n/a: <reason>` or `not done: <reason>`. Give the results as step 1-7 say
+  in their Record lines.
 - If the head moved, re-check every finding and anchor, set `Head` to the SHA
   you pinned, and say so in the direct answer.
 

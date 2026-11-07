@@ -61,9 +61,9 @@ Body: Thanks for the PR, @namtran1812! Requesting changes, details inline. Main 
 - **2. Explain:** done
   - Parts n/a: 7 (the author gave no numbers)
 - **3. Structural passes:** done
-  - reduce-complexity: reported dead resubmit branches; kept as a finding
-  - humanize: nothing to change
-  - plain-prose: description has no numbers; dropped, covered by the performance ask
+  - reduce-complexity: subagent; reported dead resubmit branches; kept as a finding
+  - humanize: subagent; nothing to change
+  - plain-prose: subagent; description has no numbers; dropped, covered by the performance ask
 - **4. Evidence:** done
   - Performance: applied: no numbers, no perf test, grid of sizes requested
   - Correctness: applied: invariant is one probe per left row
@@ -99,6 +99,28 @@ class CheckReviewTests(unittest.TestCase):
 
     def test_conforming_package_passes(self):
         self.assertEqual(check_review.check(GOOD), [])
+
+    def test_structural_pass_names_subagent_or_inline(self):
+        bare = (
+            "  - reduce-complexity: reported dead resubmit branches; kept as a finding"
+        )
+        problems = problems_after(
+            "  - reduce-complexity: subagent; reported dead resubmit branches; kept as a finding",
+            bare)
+        self.assertProblem(problems, "'reduce-complexity' must start with 'subagent;'")
+        missing_reason = problems_after(
+            "  - humanize: subagent; nothing to change",
+            "  - humanize: inline; nothing to change")
+        self.assertProblem(missing_reason, "'humanize' must start with 'subagent;'")
+        no_report = problems_after(
+            "  - plain-prose: subagent; description has no numbers; dropped, covered by the performance ask",
+            "  - plain-prose: subagent;")
+        self.assertProblem(no_report, "'plain-prose' must start with 'subagent;'")
+        inline = GOOD.replace(
+            "  - humanize: subagent; nothing to change",
+            "  - humanize: inline: host has no subagents; nothing to change",
+            1)
+        self.assertEqual(check_review.check(inline), [])
 
     def test_template_in_skill_matches_the_checker(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")

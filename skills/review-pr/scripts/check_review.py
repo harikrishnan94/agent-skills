@@ -47,6 +47,9 @@ RECORD = [
     (7, "Draft", ["Passes", "Greeting"]),
 ]
 EVIDENCE_STEP = 4
+STRUCTURAL_STEP = 3
+# `subagent; <report>` or `inline: <reason>; <report>`.
+STRUCTURAL_RE = re.compile(r"^(?:subagent|inline:\s+\S[^;]*);\s*\S")
 
 # Only the tokens the template uses, so `std::vector<int>` in a finding is fine.
 PLACEHOLDER_RE = re.compile(
@@ -321,6 +324,11 @@ def check_record(lines, problems):
                 problems.append(
                     f"line {sub['no']}: '{item}' must start with 'applied: <result>', "
                     "'n/a: <reason>' or 'not done: <reason>'"
+                )
+            elif n == STRUCTURAL_STEP and not STRUCTURAL_RE.match(text):
+                problems.append(
+                    f"line {sub['no']}: '{item}' must start with 'subagent;' or "
+                    "'inline: <reason>;' and then what the pass reported"
                 )
             elif item == "Re-checked at" and not SHA_RE.search(text):
                 problems.append(f"line {sub['no']}: 'Re-checked at' must give a SHA (7-40 hex characters)")
