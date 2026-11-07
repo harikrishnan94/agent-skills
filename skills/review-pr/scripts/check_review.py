@@ -19,6 +19,9 @@ VERDICT_EVENTS = {
     "Approve": "APPROVE",
 }
 EVENTS = ("APPROVE", "COMMENT", "REQUEST_CHANGES")
+# GitHub rejects approving or requesting changes on your own PR.
+SELF_AUTHOR = "harikrishnan94"
+GREETING_RE = re.compile(r"^\s*(?:thanks|thank you|hi|hello|hey)\b", re.I)
 
 SECTIONS = ["What it does", "Findings", "Not raising", "Draft review", "Review record"]
 
@@ -135,9 +138,9 @@ def check_header(pre, problems):
         return None
     no, first = body[0]
     m = TITLE_RE.match(first)
-    verdict = None
+    verdict = author = None
     if m:
-        verdict = m.group("verdict")
+        verdict, author = m.group("verdict"), m.group("author")
     else:
         problems.append(
             f"line {no}: the first line must be "
@@ -161,7 +164,7 @@ def check_header(pre, problems):
         problems.append("the Head line is missing between the title and '### What it does'")
     if not answer:
         problems.append("the direct answer is missing between the title and the Head line")
-    return verdict, answer[0] if answer else ""
+    return verdict, answer[0] if answer else "", author
 
 
 def check_parts(lines, problems):
@@ -216,7 +219,7 @@ def check_list_section(name, lines, problems, findings=False):
             problems.append(f"line {no}: a finding must say 'Evidence:' and what you checked")
 
 
-def check_draft(heading, lines, verdict, problems):
+def check_draft(heading, lines, verdict, problems, own_pr=False):
     m = DRAFT_HEADING_RE.match(heading)
     event = m.group("event").strip() if m else None
     if event not in EVENTS:
@@ -224,6 +227,12 @@ def check_draft(heading, lines, verdict, problems):
             "the Draft review heading must read '### Draft review (event: X)' "
             f"with X one of {', '.join(EVENTS)} (got {heading!r})"
         )
+    elif own_pr:
+        if event != "COMMENT":
+            problems.append(
+                "an own PR needs event COMMENT, because GitHub rejects approving "
+                f"or requesting changes on your own PR, but the Draft review says {event}"
+            )
     elif verdict and event != VERDICT_EVENTS[verdict]:
         problems.append(
             f"the verdict '{verdict}' needs event {VERDICT_EVENTS[verdict]}, "
@@ -241,6 +250,8 @@ def check_draft(heading, lines, verdict, problems):
         rest = lines[body_at][1][len("Body:"):]
         if not has_text(rest, lines[body_at + 1:stop]):
             problems.append("Draft review: the Body has no text")
+        elif own_pr and GREETING_RE.match(rest):
+            problems.append("Draft review: an own PR's Body is the decision, with no greeting or thanks")
     for k, i in enumerate(items):
         no, raw, _ = lines[i]
         if not COMMENT_ANCHOR_RE.match(raw):
@@ -353,7 +364,8 @@ def check(text):
     lines = classify(text)
     pre, sections = split_sections(lines)
     header = check_header(pre, problems)
-    verdict, first_answer = header if header else (None, "")
+    verdict, first_answer, author = header if header else (None, "", None)
+    own_pr = bool(author) and author.lower() == SELF_AUTHOR
 
     keys = [section_key(name) for name, _, _ in sections]
     for key in SECTIONS:
@@ -377,7 +389,7 @@ def check(text):
         elif key == "Not raising":
             check_list_section("Not raising", body, problems)
         elif key == "Draft review":
-            check_draft(name, body, verdict, problems)
+            check_draft(name, body, verdict, problems, own_pr)
         elif key == "Review record":
             not_done = check_record(body, problems)
 

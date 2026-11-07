@@ -1,18 +1,17 @@
 ---
 name: review-pr
 description: >-
-  Review a GitHub pull request written by someone else the way Hari does, and
-  return his default review package: what the PR does, answers to the
-  questions he would ask, verified findings, and draft comments for his
-  approval. Use whenever asked to review, assess, explain, sanity-check or
-  comment on another author's PR: "review PR #N", "let's review <url>", "what
-  does this PR do", "is this PR valid", "can I approve this", "draft review
+  Review a GitHub pull request the way Hari does, and return his default
+  review package: what the PR does, answers to the questions he would ask,
+  verified findings, and draft comments for his approval. Use whenever asked
+  to review, assess, explain, sanity-check or comment on a PR, whoever wrote
+  it, including Hari's own: "review PR #N", "let's review <url>", "what does
+  this PR do", "is this PR valid", "can I approve this", "draft review
   comments", or a re-review after the author pushed. Use it together with, and
-  in preference to, a repository's generic review skill. Not for PRs Hari
-  authored (use watch-pr, reduce-complexity, humanize).
+  in preference to, a repository's generic review skill.
 ---
 
-# Review someone else's pull request
+# Review a pull request
 
 Hari reviews to understand a change first, then decides what is worth saying.
 The default deliverable is one package in chat: a self-contained visual
@@ -25,8 +24,9 @@ is posted until he says "post".
   explicit "post". Read the head with `git fetch origin pull/<N>/head`, then
   `git show "${sha}:${path}"` and `git grep <pattern> "${sha}"` (quoted for
   zsh). Never check out or create branches in Hari's tree.
-- **Authorship.** If the author is `harikrishnan94`, stop: this skill is for
-  other people's PRs.
+- **Authorship.** If the author is `harikrishnan94`, it is Hari's own PR.
+  Review it the same way. Only the draft differs: no greeting (step 7), and the
+  review event is `COMMENT` (step 8).
 - **Pin the head SHA** at the start; re-check it before presenting and again
   before posting.
 - **Say what you traced and what you ran.**
@@ -56,11 +56,11 @@ Steps 9 (post) and 10 (re-review) run only when Hari asks.
 - CI failures this PR causes.
 - The repository's own review skill, if any: apply its gates, not its output
   format. For ClickHouse, read [references/clickhouse.md](references/clickhouse.md).
-- Whether the author is a human or an AI agent account.
-- Hari's open PRs that touch the same files
+- Whether the author is Hari, another human, or an AI agent account.
+- Hari's other open PRs that touch the same files
   (`gh pr list --author harikrishnan94 --state open --json number,files`).
 
-Record: Author (human or AI agent account), Issues, CI caused by PR, Existing
+Record: Author (Hari, human or AI agent account), Issues, CI caused by PR, Existing
 reviews (bot blockers included), Repo review skill (its gates, or "none in
 repo"), Overlapping PRs.
 
@@ -183,7 +183,7 @@ Write each comment with `hari-voice`, then pass it through `plain-prose` and
 its review rules override `hari-voice` where they differ.
 
 Record: Passes (those applied to every comment), Greeting (the comments.md
-rule used: human, AI agent account, test-only bot).
+rule used: human, AI agent account, test-only bot, own PR).
 
 ### 8. Present and stop
 
@@ -252,7 +252,9 @@ Verification limits: <limits>
 
 - `<verdict>` is one of the four in step 6. The review event follows it:
   Request changes is `REQUEST_CHANGES`, Comment is `COMMENT`, and both
-  Approve verdicts are `APPROVE`.
+  Approve verdicts are `APPROVE`. On Hari's own PR the event is always
+  `COMMENT`, because GitHub rejects approving or requesting changes on your
+  own PR; the verdict stays in the title and the Body states it.
 - `<direct answer>` answers Hari's question. If any status below is `not
   done`, it starts with `Incomplete: <steps>.`
 - Findings and Not raising each hold bullets, or the single word `None.`

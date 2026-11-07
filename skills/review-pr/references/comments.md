@@ -29,6 +29,11 @@ differ from `hari-voice`.
   "@groeneai can you ...", one task per paragraph.
 - **Test-only bot PR:** "Test only changes.\nLGTM." if it is correct;
   otherwise one direct comment saying what to replace.
+- **Hari's own PR:** no greeting and no thanks. The body is the decision in
+  one line: "LGTM.", or "Requesting changes, details inline. Main blocker is
+  <X>." The comments follow inline, written as notes without a salutation.
+  The event is `COMMENT`, since GitHub rejects approving or requesting
+  changes on your own PR.
 
 ## Placement
 

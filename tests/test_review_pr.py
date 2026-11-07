@@ -187,6 +187,30 @@ class CheckReviewTests(unittest.TestCase):
                 "(event: REQUEST_CHANGES)", "(event: APPROVE)", 1)
             self.assertEqual(check_review.check(text), [], verdict)
 
+    def own_pr(self, event="COMMENT", body="Requesting changes, details inline. Main blocker is `04102_hash_join_stress_test`."):
+        text = GOOD.replace("(#121209 by @namtran1812)", "(#121209 by @harikrishnan94)", 1)
+        text = text.replace("(event: REQUEST_CHANGES)", f"(event: {event})", 1)
+        return text.replace(
+            "Body: Thanks for the PR, @namtran1812! Requesting changes, details inline. Main blocker is `04102_hash_join_stress_test`.",
+            f"Body: {body}", 1)
+
+    def test_own_pr_is_reviewed_with_a_comment_event(self):
+        self.assertEqual(check_review.check(self.own_pr()), [])
+        approve = self.own_pr(event="APPROVE").replace(": Request changes\n", ": Approve\n", 1)
+        self.assertProblem(check_review.check(approve), "own PR needs event COMMENT")
+        request = self.own_pr(event="REQUEST_CHANGES")
+        self.assertProblem(check_review.check(request), "own PR needs event COMMENT")
+
+    def test_own_pr_body_has_no_greeting(self):
+        for greeting in ("Thanks for the PR! Requesting changes, details inline.",
+                         "Thank you, requesting changes, details inline.",
+                         "Hi, requesting changes, details inline."):
+            self.assertProblem(check_review.check(self.own_pr(body=greeting)), "no greeting")
+        self.assertEqual(check_review.check(self.own_pr(body="LGTM.")), [])
+
+    def test_other_authors_may_still_be_greeted(self):
+        self.assertEqual(check_review.check(GOOD), [])
+
     def test_invalid_verdict(self):
         self.assertProblem(problems_after(": Request changes\n", ": Looks fine\n"), "the first line must be")
 
