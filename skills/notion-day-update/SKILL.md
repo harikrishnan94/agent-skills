@@ -96,8 +96,6 @@ directory (installs are symlinks) and run `scripts/list_sessions.py` and
   Never pass `--mark-run`.
 - Run the same scan on `ssh dev`; most join work runs there. If the scripts
   are not installed there, pipe them: `ssh dev 'python3 - <args>' < <script>`.
-  The agent-memory files `~/.agent-memory/projects/*/sessions/*/state.md` on
-  both hosts are compact summaries.
 - Skip copies: Codex sessions that replay a Cursor session (same prompts,
   identical timestamps, `external_agent_tool_call`), approval helpers, this
   session, and earlier runs of this workflow.

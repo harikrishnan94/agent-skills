@@ -694,7 +694,7 @@ class TestInstaller(Base):
             json.dump({"version": 1}, f)
 
     def install(self):
-        p = subprocess.run([sys.executable, INSTALLER, "--home", self.home,
+        p = subprocess.run([sys.executable, INSTALLER, "--enable", "--home", self.home,
                             "--repo", REPO, "--skip-doctor"],
                            capture_output=True, text=True, timeout=120)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)

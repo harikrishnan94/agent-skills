@@ -23,6 +23,8 @@ A skill is a small Markdown file with YAML frontmatter (`name` + `description`) 
 
 ## Hooks
 
+**agent-memory is off by default.** It was uninstalled from the mac and `dev` on 2026-11-10 to see how agents behave without it, and the installer refuses to run without `--enable`.
+
 The **agent-memory** system ([`hooks/agent-memory/`](hooks/agent-memory/), design in [`docs/session-memory.md`](docs/session-memory.md)) gives all four agents a shared, durable working memory in one store (`~/.agent-memory`): a bounded, agent-neutral working-state checkpoint per session, a mechanical event journal maintained by hooks, cross-session and cross-agent resume (`adopt`), staleness enforcement at turn end, history search, and a `doctor` that validates each host's installation. It supersedes the earlier per-agent `session-scratchpad` hooks — the installer removes those automatically.
 
 One Python core ([`agent_memory.py`](hooks/agent-memory/agent_memory.py)) handles all four agents; per-agent adapters are just symlinks plus each platform's native hook registration (from [`snippets/`](hooks/agent-memory/snippets/)):
@@ -37,7 +39,7 @@ One Python core ([`agent_memory.py`](hooks/agent-memory/agent_memory.py)) handle
 Install/upgrade on a host that has the repo cloned (idempotent):
 
 ```bash
-hooks/install-multi-agent-hooks.sh
+hooks/install-multi-agent-hooks.sh --enable
 python3 hooks/agent-memory/agent_memory.py doctor   # validate
 ```
 

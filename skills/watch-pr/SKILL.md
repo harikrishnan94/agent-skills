@@ -37,7 +37,7 @@ continuing independent work.
 
 Keep evidence outside commits under the main checkout's scratch location,
 normally `tmp/pr-watch/<host>/<owner>/<repo>/<number>`. Record its absolute path
-in the handoff and host-provided agent-memory working-state file, when present.
+in the handoff.
 Maintain a compact `STATE.md`: assignment/authority, intent, owner/worktree,
 head/base/test-merge SHAs, expected CI, blocker signatures and evidence, fixes and
 validation, processed event, monitor lifetime, and exact next action. Rewrite

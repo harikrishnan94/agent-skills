@@ -7,7 +7,8 @@ memory authorities never run side by side. Existing user configuration outside
 the agent-memory/session-scratchpad entries is preserved verbatim; JSON files
 are re-serialized (formatting may change, content does not).
 
-Usage: installer.py [--home DIR] [--repo DIR] [--skip-doctor]
+Usage: installer.py --enable [--home DIR] [--repo DIR] [--skip-doctor]
+  --enable  required: agent-memory is off by default since 2026-11-10
   --home  target home directory (default: $HOME; used by tests)
   --repo  agent-skills clone (default: derived from this file's location)
 """
@@ -458,9 +459,12 @@ def main(argv=None):
     repo = os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.realpath(__file__))))
     skip_doctor = False
+    enable = False
     while argv:
         arg = argv.pop(0)
-        if arg == "--home":
+        if arg == "--enable":
+            enable = True
+        elif arg == "--home":
             home = argv.pop(0)
         elif arg == "--repo":
             repo = argv.pop(0)
@@ -469,6 +473,10 @@ def main(argv=None):
         else:
             print(__doc__)
             return 2
+    if not enable:
+        print("agent-memory is off by default (uninstalled on 2026-11-10)."
+              " Re-run with --enable to install it.")
+        return 2
     if not os.path.isfile(core_script(repo)):
         print("error: %s not found — run from an agent-skills clone" %
               core_script(repo))
