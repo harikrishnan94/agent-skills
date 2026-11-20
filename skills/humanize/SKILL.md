@@ -48,8 +48,10 @@ unrelated reformatting or refactoring.
 branch solely because it looks generated. Verify it is actually dead or
 redundant — read the caller, the type, the test — before removing it. If you
 cannot verify, leave it and say so. Delete a redundant comment without adding
-a replacement. When it carries a useful fact, preserve that fact in fewer
-words where possible. Never invent a rationale to justify keeping code.
+a replacement. When it carries a useful fact that readers cannot already
+find where they look (see *Where a fact belongs*), preserve that fact in
+fewer words where possible. A true comment is not thereby a needed one.
+Never invent a rationale to justify keeping code.
 
 ## Read the neighbors first
 
@@ -86,11 +88,56 @@ of what they do. API documentation must still describe its contract.
 - Apply the same restraint to tests, docstrings, and block comments. Do not
   move narration into docstrings, a README, or PR text to reduce the count.
 
+**Where a fact belongs.** A useful fact still needs the right home. Before
+you keep or rewrite a comment, check whether its fact already lives where a
+reader of that line will look:
+
+- **The callee.** Read the name and doc comment of the function the line
+  calls. If they already say why the call is made, a call-site comment
+  repeats them: delete it. Put a missing fact on the callee once, not on
+  each caller.
+- **The commit message.** A comment that tells the story of the change — the
+  bug it fixes, the cause of that bug, what the code did before, what a
+  version that no longer exists "would" do — is a commit-message sentence.
+  Delete it when the commit message or PR text already says it, and move it
+  there otherwise. Two tests. Would the sentence make sense to a reader who
+  never saw the pre-change code? An account of the old behavior does not.
+  Does it say more than why the line was added? The cause of the bug does
+  not, even written as a present-tense fact: `git blame` leads to the
+  commit that states it. A hazard for the next person to edit the code
+  ("must run before `flush`, or the writer deadlocks") passes both.
+- **The sibling.** When the change makes one arm of a branch do what its
+  sibling already does without a comment, a comment on that arm marks a
+  difference that no longer exists. Delete it, and note that the arms may
+  now merge.
+
+Run the checks on the whole comment first, then again on whatever a cut
+leaves. The sentence that survives a cut is a new comment and needs its own
+reason to stay. "Nothing near this line says so" is not that reason when
+the callee, the commit message or the sibling says it. Nor is "the line
+looks unnecessary without it": when a test fails without the line and the
+commit message says why it is there, the line needs no defense in a
+comment. A useful fact that no check finds anywhere else stays.
+
+Explain another module's internals (how it casts, compares, caches) by
+naming it, not by retelling it; a retold mechanism goes stale without anyone
+noticing.
+
+**A reviewer who calls a comment confusing has not asked for a longer one.**
+First check whether the code reads correctly without it: the callee's name,
+a better local name, a simpler branch. If it does, delete the comment; that
+answers the review too. Rewrite it only when a reader would otherwise get
+the code wrong and no other place tells them (*Where a fact belongs*), and
+then make it shorter, not more detailed. A review ask
+about a comment's wording constrains the wording if the comment stays. It
+does not require the comment to exist.
+
 Do not delete useful context to meet a count, or pack it into unreadably long
 lines. A comment increase needs a concrete explanation of what readers were
 missing. When an existing fact is unclear, investigate before cutting it.
 Verify factual claims in new or rewritten explanations against the code,
-tests, requirements, or documented constraints.
+tests, requirements, or documented constraints. A verified claim must still
+pass *Where a fact belongs*.
 
 Before:
 
@@ -274,6 +321,8 @@ question. If you review it yourself, do not claim an independent check.
 The closing checklist:
 
 - unnecessary comment lines removed; useful facts kept without repeated prose
+- no comment repeats the callee's doc or the commit message, or tells the
+  story of the change; what a cut left behind was checked again
 - every added construct serves the final implementation, not an abandoned plan
 - names and explanations make sense without the author's private context
 - prose reads as short, one-idea sentences in ordinary words
