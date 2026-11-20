@@ -29,7 +29,8 @@ is posted until he says "post".
   review event is `COMMENT` (step 8).
 - **Pin the head SHA** at the start; re-check it before presenting and again
   before posting.
-- **Say what you traced and what you ran.**
+- **Record what you traced and what you ran** in the Review record. Comments
+  state findings flat.
 - **No step is skipped** for time or tool budget. Each step 1-7 ends up in the
   Review record (step 8) as `done`, `n/a: <reason>` or `not done: <reason>`.
   `n/a` is allowed only where the step names the condition: no review skill in

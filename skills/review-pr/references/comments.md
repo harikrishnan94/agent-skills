@@ -14,7 +14,9 @@ differ from `hari-voice`.
   ...?", "could you ...?").
 - Leave out line numbers, SHAs, diff stats, internal call chains, and
   reasoning already settled in chat.
-- Hedge only what you have not proven: "traced it, haven't run a repro".
+- State each point flat. No "I think", "might" or "traced it, haven't run a
+  repro"; how you checked stays in chat. A point you cannot state flat is not
+  ready: verify it, ask the author a plain question, or drop it.
 - Say when something predates the PR.
 - Do not explain basics to an experienced contributor.
 - If Hari calls a draft "polished", "AI" or not "lazy" enough, rewrite it

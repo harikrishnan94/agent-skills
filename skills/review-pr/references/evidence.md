@@ -44,8 +44,7 @@ do not repeat them here.
   after spill".
 - If code becomes unreachable, ask to replace it with an assertion rather
   than delete it silently.
-- Argue bot blockers on the mechanism, and hedge: "I think it is not a
-  regression: ...".
+- Argue bot blockers on the mechanism, stated flat: "not a regression: ...".
 
 ## Tests
 
