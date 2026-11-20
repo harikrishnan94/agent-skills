@@ -45,6 +45,10 @@ python3 hooks/agent-memory/agent_memory.py doctor   # validate
 
 Tests: `tests/run.sh`.
 
+## Evals
+
+[`evals/`](evals/) holds regression tests for `humanize`, `reduce-complexity` and `prompt-builder`: small fixture repositories with a known problem, and scripts that grade what an agent did with them. [`evals/README.md`](evals/README.md) says how to build a fixture, run a skill on it and grade the result. Run output goes to `evals/<skill>-workspace/`, which git ignores.
+
 ## Installing
 
 Each agent loads skills from its own directory. Copy the skill folders in:

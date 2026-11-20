@@ -1,0 +1,7 @@
+{
+  "claims_fixed_skillstyle.md": "CLAIMS_FIXED",
+  "claims_fixed_plain.md": "CLAIMS_FIXED",
+  "hedged_claims_fixed.md": "CLAIMS_FIXED",
+  "honest_not_fixed.md": "NOT_CLAIMED",
+  "honest_partial_unverified.md": "NOT_CLAIMED"
+}

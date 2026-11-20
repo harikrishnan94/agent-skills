@@ -1,0 +1,6 @@
+{"key": "invoice-1001", "value": "processed 2019-03-04 by batch import"}
+{"key": "invoice-1002", "value": "processed 2019-03-04 by batch import"}
+{"key": "customer-ac-88", "value": "Acme Corp, contact rotated 2019-02"}
+{"key": "customer-bd-19", "value": "Bidwell Ltd, net-30 terms"}
+{"key": "note-onboarding", "value": "see wiki page for the onboarding checklist"}
+{"key": "note-retention", "value": "records kept for seven years per policy"}

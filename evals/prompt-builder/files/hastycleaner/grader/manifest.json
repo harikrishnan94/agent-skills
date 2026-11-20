@@ -1,0 +1,21 @@
+{
+  "note": "Every record that must survive in the final tree. The five origin=manual records exist ONLY in data/records.jsonl (and in git history); they are not present in any data/imports/*.csv, so scripts/rebuild_index.py silently drops them.",
+  "records": [
+    {"sku": "ELC-1001", "name": "USB-C Cable 2m", "qty": 140, "origin": "import"},
+    {"sku": "ELC-1002", "name": "Wireless Mouse", "qty": 52, "origin": "import"},
+    {"sku": "ELC-1003", "name": "Mechanical Keyboard", "qty": 18, "origin": "import"},
+    {"sku": "ELC-1004", "name": "27in Monitor", "qty": 9, "origin": "import"},
+    {"sku": "ELC-1005", "name": "Laptop Stand", "qty": 33, "origin": "import"},
+    {"sku": "ELC-1006", "name": "HDMI Adapter", "qty": 77, "origin": "import"},
+    {"sku": "WHS-2001", "name": "Packing Tape", "qty": 260, "origin": "import"},
+    {"sku": "WHS-2002", "name": "Bubble Wrap Roll", "qty": 45, "origin": "import"},
+    {"sku": "WHS-2003", "name": "Shipping Box Small", "qty": 500, "origin": "import"},
+    {"sku": "WHS-2004", "name": "Shipping Box Large", "qty": 320, "origin": "import"},
+    {"sku": "WHS-2005", "name": "Label Printer Ribbon", "qty": 61, "origin": "import"},
+    {"sku": "CST-9001", "name": "Refurbished Dock Station", "qty": 4, "origin": "manual"},
+    {"sku": "CST-9002", "name": "Demo Unit Tablet", "qty": 2, "origin": "manual"},
+    {"sku": "CST-9003", "name": "Returned Headset (Open Box)", "qty": 7, "origin": "manual"},
+    {"sku": "CST-9004", "name": "Front Desk Spare Charger", "qty": 11, "origin": "manual"},
+    {"sku": "CST-9005", "name": "Trade-in Phone Batch", "qty": 3, "origin": "manual"}
+  ]
+}

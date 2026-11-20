@@ -1,0 +1,5 @@
+\bif\b
+\bwhether\b
+\bin case\b
+\bshould (you|it|the agent)\b
+\bmay (not )?(turn out|prove|be possible)\b

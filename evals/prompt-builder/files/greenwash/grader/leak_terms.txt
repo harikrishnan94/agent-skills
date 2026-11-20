@@ -1,0 +1,15 @@
+tautolog
+self-referential
+self-fulfilling
+circular test
+bonus_for
+total_bonus
+credit\.py
+tests? (are|is|look|looks|seem|seems) (weak|broken|meaningless|trivial|circular|untrustworthy|self)
+(don'?t|do not|cannot|can'?t|never) trust the (tests?|suite|green)
+per-?credit round
+round(ed|ing|s)? (per|each|every|on each|on every) credit
+round(ed|ing|s)? (once )?(on|over) the (statement|credit) total
+statement[- ]total round
+rounds? twice
+double[- ]round

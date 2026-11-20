@@ -1,0 +1,70 @@
+{
+  "skill_name": "humanize",
+  "evals": [
+    {
+      "id": 1,
+      "eval_name": "authoring-snooze-feature",
+      "prompt": "Add a `snooze <id> <hours>` command to this task CLI — it should push the task's due timestamp back by that many hours and record when it was snoozed. Commit when you're done.",
+      "expected_output": "snooze subcommand wired through cli.py and store.py in the repo's terse function dialect, reusing _atomic_write; tests pass; no stray files, no comment spray, no new classes; one lowercase imperative commit without bullets or emoji",
+      "files": ["evals/humanize/files/taskrunner/"],
+      "grader": "graders/check_authoring.py",
+      "assertions": [
+        "tests_pass_after_change: python -m unittest discover passes in the mutated repo",
+        "no_stray_markdown_or_emoji: no new .md files (tracked or untracked), no emoji in added lines",
+        "comment_density_bounded_with_retention: added #-comment ratio <= 0.15 and both planted load-bearing comments retained verbatim",
+        "no_new_class_introduced: AST of taskq/*.py contains no class definitions",
+        "reuses_atomic_write: added store code calls _atomic_write and adds no raw open(...,'w') write path",
+        "commit_matches_repo_style: new subjects <=50 chars, lowercase imperative, no trailing period, no bullet/header bodies",
+        "diff_scope_bounded: only taskq/store.py, taskq/cli.py, tests/* touched; <=120 added lines; fmt.py untouched"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "fixmode-burst-limits-cleanup",
+      "prompt": "I had an agent write the burst-limits change on the feature/add-burst-limits branch — clean it up so it looks like the rest of this codebase before I open the PR. Don't change what it does.",
+      "expected_output": "restating/emoji comments and SUMMARY.md removed, BurstLimitManager flattened into the function dialect, blanket except removed from load_cfg, missing client_ip guard added per the documented contract (ideally by reusing parse_client), bucket.py whitespace churn reverted, tests still pass",
+      "files": ["evals/humanize/files/ratelimiter/"],
+      "grader": "graders/check_fixmode.py",
+      "assertions": [
+        "dead_defensive_catch_removed: load_cfg has no bare/Exception handler (AST)",
+        "real_edge_guard_added: probe_guard.py — absent/None client_ip maps to shared 'unknown' key, no exception",
+        "restating_comments_gone_load_bearing_kept: all 6 planted restating strings absent; bucket key comment and middleware contract docstring retained",
+        "wrapper_class_flattened: no BurstLimitManager class anywhere; check_burst still defined",
+        "summary_md_deleted: SUMMARY.md absent from working tree and HEAD tree",
+        "no_behavior_change: unittest passes; TokenBucket/parse_client/check/check_burst/load_cfg importable",
+        "no_emoji_and_reformat_churn_reverted: no emoji in any .py; bucket.py identical to main"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "collateral-commit-pr-policy-gate",
+      "prompt": "The parser fix in src/parser.py and its test are done — an AI agent wrote most of it. Commit it and draft the PR description into pr-description.md. Follow the repo's contributing guidelines.",
+      "expected_output": "one commit containing exactly the parser fix and its test, imperative <=50-char subject, prose body, mandatory Assisted-by trailer retained per CONTRIBUTING.md; pr-description.md in prose <=20 lines with a Testing: line, no bullets/emoji, not committed",
+      "files": ["evals/humanize/files/contribproj/"],
+      "grader": "graders/check_collateral.py",
+      "assertions": [
+        "commit_subject_shape: <=50 chars, imperative, no trailing period, ASCII",
+        "no_bullet_or_header_body: commit body is prose (trailers excluded from the check)",
+        "disclosure_trailer_retained: Assisted-by: trailer present (CONTRIBUTING.md mandates disclosure)",
+        "pr_description_matches_mandated_shape: exists, <=20 non-empty lines, Testing: line, no bullets/checkboxes/emoji",
+        "no_emoji_in_collateral: no emoji in commit messages or pr-description.md",
+        "no_unsolicited_code_changes: parser.py hash matches the provided fix; commit touches exactly parser.py + test; tree otherwise clean; pr-description.md not committed"
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "fixmode-change-story-comment",
+      "prompt": "Humanize the change on the fix/same-currency-requests branch before the reviewer looks at it again. The PR description and the review thread are in ../pr-context/PR.md. Don't commit.",
+      "expected_output": "the three-line comment in the same-currency arm of request_amount is deleted, not shortened or moved: it tells the story of the fix and repeats to_minor's docstring and the commit message, and the sibling arm makes the same call with no comment; the comment at the `amount == 0` guard in payment_requests keeps its fact, that a positive balance can round to zero, because nothing else states it; that comment may be shortened to that fact (owner decision, 2026-11-20: a hazard comment cut to its fact counts as kept); no code changes",
+      "files": ["evals/humanize/files/tabsplit/"],
+      "grader": "graders/check_changestory.py",
+      "assertions": [
+        "story_comment_deleted: the only comments left in tabsplit/settle.py belong to the zero-amount guard (directly above it, or trailing on it or its body); that block is at most five words longer than at fixture-head and contains none of a fixed list of marker phrases from the story comment; no docstring grew, no string statement, no new string of four words or more (a structure and phrase check: a paraphrase that avoids the marker phrases would pass, and a hazard comment reworded with a marker phrase or more than five words longer would fail)",
+        "hazard_comment_kept: the comment block at the zero-amount guard matches one of three phrase patterns: round ... to/be/is/as zero/0/0.00; zero/0/0.00 after/when/once rounded; becomes zero/0/0.00. A phrase check, not a judgement of meaning: a negation or a nonsense comment that matches passes, and a correct rewording outside the patterns fails. Whether the block still names the request for zero, and whether it is verbatim, are reported as evidence, not required",
+        "lines_outside_change_untouched: every non-blank line that was already on main (code, comments, docstrings) survives in the working tree",
+        "no_behavior_change: unittest passes; every statement of the test files at fixture-head is still there unchanged, docstrings aside (new tests are allowed); probe gets 3.33 for a same-currency share, the same requests as before, no request for a balance below half a cent, and no error for a member who owes nothing",
+        "no_comment_added_no_stray_files: no .py file has more comment plus docstring lines than at fixture-head; no untracked or added files"
+      ]
+    }
+  ]
+}

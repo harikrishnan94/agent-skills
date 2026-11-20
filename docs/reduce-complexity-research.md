@@ -76,8 +76,8 @@ corrected.
 
 ## What the evaluation added
 
-The eval suite lives outside the repository, so its main lesson is
-recorded here. Both the old and the rewritten skill found every planted
+The eval suite is in `evals/reduce-complexity/`. Its main lesson is
+recorded here as well. Both the old and the rewritten skill found every planted
 simplification and avoided every trap, so graded assertions could not
 tell them apart. Blind side-by-side judging could. A first rewrite that
 printed its own procedure in the report (the design sketch, a count table

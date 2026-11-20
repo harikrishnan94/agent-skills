@@ -1,0 +1,134 @@
+{
+  "skill_name": "reduce-complexity",
+  "evals": [
+    {
+      "id": 1,
+      "eval_name": "seeded-accretion-logship",
+      "prompt": "I built the batch-export change on the feature/batch-export branch of this repo. Before I open the PR, review the branch for accidental complexity it picked up while being built \u2014 anything that could be simpler if it had been designed knowing where it ended up. Don't change any code; write your findings to report.md in the repo root.",
+      "expected_output": "report.md names all three planted accretions with their files and matching mechanical fixes: the constant-threaded legacy flag in records.py (remove parameter, delete dead arm), the unreferenced _chunk helper in exporter.py backed by branch-history evidence (introduced, then orphaned by a later commit), and the batch_to_rows adapter bridging two shapes both introduced on this branch (unify, delete adapter); the repo tree is untouched apart from report.md",
+      "files": [
+        "evals/reduce-complexity/files/logship/"
+      ],
+      "grader": "graders/check_seeded.py",
+      "assertions": [
+        "repo_untouched_report_only: HEAD still at fixture-head and git status clean apart from report.md",
+        "report_exists_with_findings: report.md exists and is non-trivial",
+        "flags_constant_threaded_flag: a block names the legacy flag with records.py or format_entry and recommends removing the parameter/dead arm",
+        "flags_dead_scaffolding_with_history: a block names _chunk as removable and cites branch-history evidence (introduced/commit/orphaned language)",
+        "flags_adapter_between_own_shapes: a block names batch_to_rows (or the Batch/BatchWriter adapter) and recommends unifying/deleting it"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "inherent-only-paygate",
+      "prompt": "The retry work on the feature/retry-processing branch already went through one review round \u2014 the reviewer's notes are committed in REVIEW.md. Give the branch a reduce-complexity pass before I push the next revision: report anything that could genuinely be simpler, but don't touch the code \u2014 write your report to report.md in the repo root.",
+      "expected_output": "an honest near-empty report: the backoff cap guard (reachable via stored retry state), the signature re-verification (defense in depth at an auth boundary), and the RetryState state machine (mandated by REVIEW.md) all survive; none gets a remove verdict; at most one open question; the repo tree is untouched apart from report.md",
+      "files": [
+        "evals/reduce-complexity/files/paygate/"
+      ],
+      "grader": "graders/check_inherent.py",
+      "assertions": [
+        "repo_untouched_report_only: HEAD still at fixture-head and git status clean apart from report.md",
+        "backoff_guard_not_removed: no block recommends removing the MAX_BACKOFF_EXP cap guard",
+        "signature_recheck_not_removed: any block naming the verify_signature re-check carries a keep/label/ask verdict, not removal",
+        "retry_state_machine_respected: no block recommends inlining/collapsing/removing RetryState (REVIEW.md mandates it)",
+        "at_most_one_question: at most one question-for-the-author item in the report (narrative mentions don't count)",
+        "tests_not_deduplicated: no block recommends merging/deduplicating the branch's tests \u2014 deliberate test duplication is never-flag territory"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "mixed-stockroom",
+      "prompt": "feature/export-formats adds CSV and JSON export to this repo. Check the branch for accidental complexity before review \u2014 report only, into report.md in the repo root; leave the tree otherwise untouched.",
+      "expected_output": "report.md flags _parse_iso8601 as reinventing util.parse_timestamp and the duplicated normalization block shared by export_csv/export_json; the None-handling in load_feed keeps its guard (external feed boundary); legacy_price_rules, if mentioned at all, sits in a clearly labeled pre-existing bucket; at most three nit-severity items; the repo tree is untouched apart from report.md",
+      "files": [
+        "evals/reduce-complexity/files/stockroom/"
+      ],
+      "grader": "graders/check_mixed.py",
+      "assertions": [
+        "repo_untouched_report_only: HEAD still at fixture-head and git status clean apart from report.md",
+        "flags_reinvented_helper: a block names both _parse_iso8601 and parse_timestamp and recommends using the existing helper",
+        "flags_within_diff_duplication: a block ties export_csv and export_json to the duplicated normalization logic",
+        "feed_guard_not_removed: no block recommends removing the None/absent-field guards in load_feed",
+        "preexisting_bucketed: legacy_price_rules, when mentioned, appears under an explicit pre-existing label, never as a plain finding",
+        "nit_cap_respected: at most three nit-severity findings"
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "apply-default-logship",
+      "prompt": "Reduce complexity on the feature/batch-export branch \u2014 clean it up before I open the PR. Put your report in report.md at the repo root.",
+      "expected_output": "the two gate-clearing plants are fixed in the working tree, uncommitted: the legacy parameter and its dead arm removed from records.py with no caller passing legacy=, and the orphaned _chunk helper deleted from exporter.py; the test suite passes on the edited tree; report.md carries Status: applied entries with verification receipts; the Batch/batch_to_rows adapter is at least addressed in the report (applied or report-only); no commits are made and no unexpected files are touched",
+      "files": [
+        "evals/reduce-complexity/files/logship/"
+      ],
+      "grader": "graders/check_apply.py",
+      "assertions": [
+        "edits_uncommitted_head_unchanged: HEAD still at fixture-head and at least one code file modified in the working tree",
+        "legacy_flag_removed_from_tree: the legacy parameter and its dead arm are gone from records.py and no caller passes legacy=",
+        "dead_chunk_deleted: the orphaned _chunk helper is gone from exporter.py",
+        "suite_green_after_edits: python -m unittest passes on the edited tree",
+        "report_status_applied_with_receipt: report.md marks applied findings with a Status line and a verification receipt",
+        "adapter_addressed: report mentions batch_to_rows (applied or report-only)",
+        "only_expected_files_touched: every modified path is one the plants or their fixes can legitimately reach"
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "question-mode-logship",
+      "prompt": "Did the feature/batch-export branch pick up accidental complexity while it was built? I'd like to know what you find \u2014 put it in report.md at the repo root.",
+      "expected_output": "a question-phrased invocation stays report-only: the tree is untouched apart from report.md, and the report still names all three planted accretions (grader shared with eval 1)",
+      "files": [
+        "evals/reduce-complexity/files/logship/"
+      ],
+      "grader": "graders/check_seeded.py",
+      "assertions": [
+        "repo_untouched_report_only: HEAD still at fixture-head and git status clean apart from report.md \u2014 the question-phrased mode gate held",
+        "report_exists_with_findings: report.md exists and is non-trivial",
+        "flags_constant_threaded_flag: a block names the legacy flag with records.py or format_entry and recommends removing the parameter/dead arm",
+        "flags_dead_scaffolding_with_history: a block names _chunk as removable and cites branch-history evidence",
+        "flags_adapter_between_own_shapes: a block names batch_to_rows (or the Batch/BatchWriter adapter) and recommends unifying/deleting it"
+      ]
+    },
+    {
+      "id": 6,
+      "eval_name": "intent-alternative-ledger",
+      "prompt": "fix/padded-customer-names fixes issue #42 in this repo. Give the branch a reduce-complexity pass before I open the PR \u2014 report only: write report.md in the repo root and leave the code alone.",
+      "expected_output": "report.md states the change's intent (padded customer names must count as one customer) and proposes the boring alternative: normalize customer (and email) in load_orders with the existing normalize_space, as region already is, making the merge_whitespace_duplicates post-pass, the reinvented _clean helper and the consumer edits unnecessary; the repo tree is untouched apart from report.md",
+      "files": [
+        "evals/reduce-complexity/files/ledger/"
+      ],
+      "grader": "graders/check_intent.py",
+      "assertions": [
+        "repo_untouched_report_only: HEAD still at fixture-head and git status clean apart from report.md",
+        "report_exists: report.md exists and is non-trivial",
+        "intent_stated: a block states the intent (padded names, customer)",
+        "reinvented_clean_addressed: a block ties _clean to the existing normalize_space",
+        "merge_pass_made_unnecessary: a block recommends deleting merge_whitespace_duplicates",
+        "proposes_load_boundary_fix: a block proposes normalizing at load_orders with normalize_space",
+        "alternative_covers_email: the load-boundary alternative also covers the padded email"
+      ]
+    },
+    {
+      "id": 7,
+      "eval_name": "intent-constraint-ledger-audit",
+      "prompt": "fix/padded-customer-names fixes issue #42 in this repo. Give the branch a reduce-complexity pass before I open the PR \u2014 report only: write report.md in the repo root and leave the code alone.",
+      "setup_args": [
+        "audit"
+      ],
+      "expected_output": "report.md states the intent and finds the local simplifications (reuse normalize_space instead of _clean; key the totals on the normalized name so merge_whitespace_duplicates goes), but does NOT recommend normalizing customer in load_orders, because ledger/audit.py must re-emit loaded values byte-for-byte; the repo tree is untouched apart from report.md",
+      "files": [
+        "evals/reduce-complexity/files/ledger/"
+      ],
+      "grader": "graders/check_intent.py audit",
+      "assertions": [
+        "repo_untouched_report_only: HEAD still at fixture-head and git status clean apart from report.md",
+        "report_exists: report.md exists and is non-trivial",
+        "intent_stated: a block states the intent (padded names, customer)",
+        "reinvented_clean_addressed: a block ties _clean to the existing normalize_space",
+        "merge_pass_made_unnecessary: a block recommends deleting merge_whitespace_duplicates",
+        "no_unsafe_load_normalization: no block recommends normalizing customer at load without dealing with the audit contract"
+      ]
+    }
+  ]
+}

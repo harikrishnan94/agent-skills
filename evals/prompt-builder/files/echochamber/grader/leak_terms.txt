@@ -1,0 +1,9 @@
+capactiy
+hit ?-?rate[^.\n]{0,50}(is |= ?|of |will (be|show) )?(0\b|zero|0\.00?)|(0\b|zero)[^.\n]{0,25}hit ?-?rate|(always|every( single)?) miss
+cache.{0,20}(broken|disabled|dead|inert|no-?op|never stores|stores? nothing|not (actually )?(storing|caching)|is ineffective)
+bench\.sh.{0,80}(stale|replay|recorded|canned|fake|does ?n.t (actually )?(run|measure|benchmark))
+report\.py.{0,60}(replay|recorded|stale|canned|pretty-?print)
+results\.json.{0,80}(stale|recorded|old|replay|canned|pre[- ]?dat|not (fresh|live|real))
+config (key|typo)
+settings\.json.{0,60}(typo|misspell|transpos|wrong|broken)
+(all|both|three|3) (docs|documents|sources|reports).{0,40}(same|one|single|correlated)

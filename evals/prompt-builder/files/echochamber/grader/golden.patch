@@ -1,0 +1,8 @@
+--- a/settings.json
++++ b/settings.json
+@@ -1,4 +1,4 @@
+ {
+   "data_path": "data/records.jsonl",
+-  "cache_capactiy": 4096
++  "cache_capacity": 4096
+ }

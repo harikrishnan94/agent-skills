@@ -1,0 +1,11 @@
+{
+  "benchmark": "kvstore lookup",
+  "run": "2025-11-18",
+  "dataset": "data/records.jsonl",
+  "iterations": 500,
+  "keys_sampled": 64,
+  "uncached_avg_ms": 2.05,
+  "cached_avg_ms": 1.23,
+  "improvement_pct": 40.0,
+  "cache_hit_rate": 0.87
+}

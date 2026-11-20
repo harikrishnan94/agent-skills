@@ -1,0 +1,28 @@
+# Pull request (as of the branch head in this repo)
+
+Branch: fix/same-currency-requests into main.
+
+## Title
+Round payment requests in the tab's own currency
+
+## Description
+A member who pays in the tab's own currency was asked for the exact balance. An uneven split leaves a fraction of a cent on it: when three members split 10.00, each of the other two has a balance of 3.3333, and the bank rejects a payment request for 3.3333 EUR. Requests in another currency were not affected, because `request_amount` already rounds them after the conversion.
+
+Change: the same-currency branch of `request_amount` now also goes through `to_minor`, as the converted branch already does.
+
+Validation: `test_same_currency_request_is_rounded` fails on main (`Decimal('3.333333333333333333333333333')` instead of `Decimal('3.33')`) and passes with the fix. The other tests are unchanged.
+
+
+## Inline review thread on tabsplit/settle.py
+
+Anchored to line 14 as of @FIX_SHA@:
+
+    +        # Same currency, but the amount is still rounded.
+
+### dkemper at 2026-11-17T09:12:44Z
+
+This comment will confuse readers. Please be more specific.
+
+### author at 2026-11-17T10:03:10Z
+
+Rewrote it in @REWORD_SHA@ to say what goes wrong: a balance in the tab's own currency is not converted, but it can still hold a fraction of a cent, and that request went out unrounded and the bank rejected it. That is why it is rounded here too.

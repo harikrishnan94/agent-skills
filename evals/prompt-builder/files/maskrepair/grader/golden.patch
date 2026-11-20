@@ -1,0 +1,30 @@
+diff --git a/feedproc/parser.py b/feedproc/parser.py
+index 30e5d4d..ff36890 100644
+--- a/feedproc/parser.py
++++ b/feedproc/parser.py
+@@ -1,18 +1,17 @@
+ """Feed file parsing helpers."""
+ 
++import csv
++
+ 
+ def parse_row(line):
+     """Split one feed line into a list of field values."""
+-    fields = line.rstrip("\r\n").split(",")
+-    return [f.strip().strip('"') for f in fields]
++    return next(csv.reader([line]))
+ 
+ 
+ def read_feed(path):
+     """Read a feed file. Returns (header, rows)."""
+-    with open(path, encoding="utf-8") as fh:
+-        lines = [line for line in fh if line.strip()]
+-    if not lines:
++    with open(path, encoding="utf-8", newline="") as fh:
++        records = [row for row in csv.reader(fh) if row]
++    if not records:
+         return [], []
+-    header = parse_row(lines[0])
+-    rows = [parse_row(line) for line in lines[1:]]
+-    return header, rows
++    return records[0], records[1:]

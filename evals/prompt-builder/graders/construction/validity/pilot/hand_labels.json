@@ -1,0 +1,182 @@
+{
+  "brief-03.md": {
+    "mode_concept_present": {
+      "pass": true,
+      "evidence": "\"You are an autonomous agent running unattended overnight. No human is available to answer questions. Make decisions yourself, document your reasoning\" — genuine autonomy semantics, not an echo of 'overnight'."
+    },
+    "scope_coverage": {
+      "pass": true,
+      "evidence": "\"The public API must not change... Do not push to any remote. Do not force-push, rebase shared branches, or delete anything... Do not edit the benchmark or load-test harnesses\" — explicit do-not-touch boundaries."
+    },
+    "honest_failure_path": {
+      "pass": true,
+      "evidence": "\"If you cannot fix it (fallback path)... A rigorous negative result with a narrowed suspect list is a successful outcome for this run.\""
+    },
+    "proportionate_to_scale": {
+      "pass": true,
+      "evidence": "1476 words, large-scale ceiling is 6500."
+    },
+    "names_runnable_oracle": {
+      "pass": true,
+      "evidence": "\"Success criteria (all must hold)... median p95 across 5+ post-fix `make bench` runs improves on the baseline by more than the noise band... full test suite passes\" — `make bench` and the test suite are concrete executable checks in explicit completion-gate context."
+    },
+    "names_refuting_verifier": {
+      "pass": false,
+      "evidence": "All verification (Phase 3, success criteria) is performed by the doer itself; \"Anything a human reviewer should double-check\" is a note to a future human, not a fresh/independent adversarial verification context."
+    },
+    "prereg_before_work": {
+      "pass": true,
+      "evidence": "\"Write down the identified root cause with evidence... before changing anything\" plus the decision rule fixing the success threshold (\"treat A as faster than B only if the median improvement exceeds ~10-15%\") committed before any fix is measured."
+    },
+    "opt_fresh_baseline_required": {
+      "pass": true,
+      "evidence": "Phase 0: \"Establish a current-code baseline measurement (5+ runs per the noise protocol). Save the numbers.\""
+    },
+    "opt_regression_floor_required": {
+      "pass": true,
+      "evidence": "\"All previously-passing tests must still pass\"; \"confirm... error rates/throughput did not degrade\"; \"Public API byte-for-byte compatible; full test suite passes.\""
+    },
+    "opt_noise_handling_required": {
+      "pass": true,
+      "evidence": "Dedicated \"Critical: benchmark noise protocol\" section: 5+ runs, median comparison, \"A 5% median delta with overlapping ranges is noise — say so, don't claim it.\""
+    },
+    "no_unresolved_slots": {
+      "pass": true,
+      "evidence": "No <<...>> placeholders anywhere in the file."
+    },
+    "no_builder_notes": {
+      "pass": true,
+      "evidence": "No '> BUILDER:' lines anywhere in the file."
+    }
+  },
+  "brief-07.md": {
+    "mode_concept_present": {
+      "pass": true,
+      "evidence": "\"The user... is available to answer questions while you work. Ask early, in one or two batches — do not trickle questions... If the user does not respond, proceed with explicitly stated default assumptions\" — interactive when-to-ask semantics."
+    },
+    "scope_coverage": {
+      "pass": true,
+      "evidence": "\"## Out of scope — Do not evaluate candidates beyond the three listed... Do not write migration code or infrastructure-as-code... Do not run benchmarks.\""
+    },
+    "honest_failure_path": {
+      "pass": false,
+      "evidence": "The deliverable unconditionally requires a single recommendation; labeling estimates/judgment and listing open questions is honesty about uncertainty, but there is no explicit path to report failure or an inconclusive result instead of recommending."
+    },
+    "proportionate_to_scale": {
+      "pass": true,
+      "evidence": "1273 words, large-scale ceiling is 6500."
+    },
+    "names_runnable_oracle": {
+      "pass": false,
+      "evidence": "No concrete executable pass/fail check is named as a completion gate; success criteria (\"every durability claim traces to official documentation\", \"arithmetic checks out\") are human-judged report properties, and \"Do not run benchmarks\" removes the executable path."
+    },
+    "names_refuting_verifier": {
+      "pass": false,
+      "evidence": "\"Anticipated CTO challenges... with your prepared answers\" is the doer anticipating objections itself — self-red-teaming, not a fresh/independent context with an adversarial mandate."
+    },
+    "prereg_before_work": {
+      "pass": false,
+      "evidence": "The criteria are fixed in the prompt, but the agent is never asked to record an expected outcome, prediction, or weighting before doing the evaluation."
+    },
+    "decision_criteria_first_required": {
+      "pass": true,
+      "evidence": "\"Evaluation criteria (all four are required; do not add or substitute criteria)\" — the criteria are frozen up front, before any candidate scoring."
+    },
+    "no_unresolved_slots": {
+      "pass": true,
+      "evidence": "No <<...>> placeholders anywhere in the file."
+    },
+    "no_builder_notes": {
+      "pass": true,
+      "evidence": "No '> BUILDER:' lines anywhere in the file."
+    }
+  },
+  "brief-12.md": {
+    "mode_concept_present": {
+      "pass": true,
+      "evidence": "\"The repository owner (Hari) is available at his desk. If you hit a hard blocker... pause and ask him rather than guessing\" — explicit when-to-ask guidance for interactive mode."
+    },
+    "scope_coverage": {
+      "pass": true,
+      "evidence": "\"Keep the diff minimal... Do not upgrade dependencies, change what artifacts get built, restructure the workflow, or touch unrelated jobs. Do not disable or weaken the job.\""
+    },
+    "honest_failure_path": {
+      "pass": true,
+      "evidence": "\"If... the failures turn out not to be fixable in-repo..., do not guess: write up the evidence and ask Hari how to proceed.\""
+    },
+    "proportionate_to_scale": {
+      "pass": true,
+      "evidence": "866 words, small-scale ceiling is 1400."
+    },
+    "names_runnable_oracle": {
+      "pass": true,
+      "evidence": "\"Push your changes to a new branch and confirm the `wheel-build` job passes on that branch\" restated as a success criterion (\"`wheel-build` passes on the PR branch\") — a concrete runnable pass/fail check in completion-gate context."
+    },
+    "names_refuting_verifier": {
+      "pass": false,
+      "evidence": "Step 4 verification is entirely by the doer; asking Hari on blockers is escalation, not an independent context with an adversarial refute-me mandate."
+    },
+    "prereg_before_work": {
+      "pass": false,
+      "evidence": "Step 2 records diagnosis evidence before changes (reproduce/diagnose-first), but nothing requires recording an expected outcome or prediction before implementing the fix; the 'why this failure mode can no longer occur' explanation is written post-hoc in the PR description."
+    },
+    "repair_reproduce_first_required": {
+      "pass": true,
+      "evidence": "\"Step 2: Gather failure evidence (do this before changing anything)\" — pin down exact command, error text, and failure mode from real logs before any fix; \"Root cause identified from actual failure logs, not assumed.\""
+    },
+    "repair_regression_check_required": {
+      "pass": true,
+      "evidence": "Step 4: lint the workflow, re-run the same pip commands in a fresh venv, and \"confirm the `wheel-build` job passes on that branch\" after the change, with \"Do not disable or weaken the job\" guarding against masking."
+    },
+    "no_unresolved_slots": {
+      "pass": true,
+      "evidence": "No <<...>> placeholders anywhere in the file."
+    },
+    "no_builder_notes": {
+      "pass": true,
+      "evidence": "No '> BUILDER:' lines anywhere in the file."
+    }
+  },
+  "brief-18.md": {
+    "mode_concept_present": {
+      "pass": true,
+      "evidence": "\"You are an autonomous maintenance agent running overnight, unattended... Nobody is available to answer questions, so every rule below is binding... skip the item and log it — never guess in the destructive direction.\""
+    },
+    "scope_coverage": {
+      "pass": true,
+      "evidence": "\"Delete artifacts only. Do not touch caches, packages, releases, release assets, or workflow run history... Never modify branch protection rules, repo settings, or CI configuration... Do not commit, push commits, or open PRs.\""
+    },
+    "honest_failure_path": {
+      "pass": true,
+      "evidence": "\"On any unexpected state..., stop destructive work immediately and write the report with what was done so far\"; report must include \"Any aborted phases and why\"; unauthenticated gh means \"abort the artifact phase and note it in the report.\""
+    },
+    "proportionate_to_scale": {
+      "pass": true,
+      "evidence": "947 words, medium-scale ceiling is 3200."
+    },
+    "authority_boundary": {
+      "pass": true,
+      "evidence": "Destructive steps gated by backup + verification + safe-stop: \"Backup first, unconditionally: create git bundle... Verify the bundle with `git bundle verify` before proceeding... If the bundle cannot be created or verified, abort deletion\" plus pre-deletion sanity gates that abort the phase."
+    },
+    "names_runnable_oracle": {
+      "pass": true,
+      "evidence": "Concrete executable checks gate progression: \"a branch is a candidate only if `git merge-base --is-ancestor origin/<name> origin/$DEFAULT` exits 0\" and \"Verify the bundle with `git bundle verify` before proceeding.\""
+    },
+    "names_refuting_verifier": {
+      "pass": false,
+      "evidence": "Sanity gates and post-batch `git ls-remote` sampling are self-checks by the doer; no fresh/independent context with an adversarial mandate reviews the work."
+    },
+    "prereg_before_work": {
+      "pass": true,
+      "evidence": "Phase 1 is read-only and writes the full candidate list to branch-deletion-candidates.txt before any deletion, with pre-committed refutable expectations (\"abort... if any excluded/protected name appears in the candidate list\" or \"the candidate list contains more than 80% of all remote branches\") checked before acting."
+    },
+    "no_unresolved_slots": {
+      "pass": true,
+      "evidence": "No <<...>> placeholders anywhere in the file."
+    },
+    "no_builder_notes": {
+      "pass": true,
+      "evidence": "No '> BUILDER:' lines anywhere in the file."
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "data_path": "data/records.jsonl",
+  "cache_capactiy": 4096
+}

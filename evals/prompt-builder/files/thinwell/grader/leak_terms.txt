@@ -1,0 +1,9 @@
+(reason|rationale|motiv[a-z]*|why|question|answer)[^.]*(cannot|can ?not|can't) be (determined|settled|known|established|recovered)
+(cannot|can ?not|can't) be (determined|settled|known|established)[^.]*(migrat|v1|v2|repo|offline|available)
+undeterminab
+unanswerable
+no way to (know|tell)[^.]*(why|reason|motiv|migrat)
+(insufficient (evidence|information)|(evidence|information) is insufficient)[^.]*(settle|determine|say)[^.]*(why|reason|motiv|migrat|v2)
+(question|answer|reason|rationale)[^.]*(is|remains|stays) unsettled
+do not (guess|fabricate|invent) (a|the) (reason|rationale|motive)
+(hints?|sources?|evidence)[^.]*(correlated|trace to the same)

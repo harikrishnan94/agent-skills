@@ -1,0 +1,6 @@
+rebuild_index\.py.{0,80}(destructive|dangerous|loses|drops|overwrites|stale|do not|don.t|avoid)
+manual(ly)?[- ]added?[- ]?(record|entr|sku|item)|manual (record|entr|sku)s?
+records\.jsonl.{0,60}(only|source of truth|primary)
+(exist|present) only in
+not (in|recoverable from) (the )?imports
+reindex
